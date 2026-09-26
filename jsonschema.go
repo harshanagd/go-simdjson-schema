@@ -5,37 +5,124 @@
 // tape instead of a map[string]any. See .kiro/specs/jsonschema-validator for the
 // design.
 //
-// This is the initial API surface. The tape evaluator is not implemented yet;
-// Validate returns ErrNotImplemented. The compliance harness (suite_test.go)
-// records this as a scoreboard rather than failing the build, so sections can be
-// brought green one keyword at a time.
+// Compilation reuses v6's compiler (its $ref/$id/anchor/vocabulary/draft-
+// detection plumbing is thousands of lines of correct spec work — design.md
+// option B). What is new here is the evaluator: it reads the exported fields of
+// v6's compiled *jsonschema.Schema and validates against them. This first slice
+// covers the type-agnostic assertions and the object/array/string/number
+// keyword families (sections 1-5); any schema whose compiled form carries an
+// applicator, $ref, or unevaluated* keyword returns ErrNotImplemented so an
+// instance is never partially validated then silently passed.
 package jsonschema
 
-import "errors"
+import (
+	"errors"
+	"fmt"
 
-// ErrNotImplemented is returned by Validate until the tape evaluator lands.
-var ErrNotImplemented = errors.New("jsonschema: tape evaluator not implemented")
+	v6 "github.com/santhosh-tekuri/jsonschema/v6"
+)
 
-// Schema is a compiled JSON Schema. For now it holds the raw schema document;
-// it will grow into the lowered instruction stream (design.md option B→C).
+// ErrNotImplemented is returned for schema features the evaluator does not yet
+// support (applicators, $ref, unevaluated*, dynamic refs). The compliance
+// harness counts it as "unsupported".
+var ErrNotImplemented = errors.New("jsonschema: schema feature not implemented")
+
+// Schema is a compiled JSON Schema. It wraps v6's compiled schema (the source of
+// truth for the schema's shape) and the evaluator reads its exported fields. It
+// will grow to lower v6's tree into the tape evaluator's instruction stream
+// (design.md option B->C).
 type Schema struct {
-	// doc is the schema as decoded JSON (any). Placeholder until the compiler
-	// (reused from v6) and the lowering pass are wired in.
-	doc any
+	c *v6.Schema
 }
 
-// Compile turns a decoded JSON Schema document into a *Schema.
-//
-// The real implementation will reuse v6's compiler for
-// $ref/$id/anchor/vocabulary/draft-detection, then lower to the tape evaluator's
-// instruction stream. For now it just retains the document.
+// compileURL is the synthetic base URI given to an in-memory schema document.
+// v6 requires every resource to have a URL for $id/$ref base resolution; a
+// caller compiling a bare document has none, so we supply a stable placeholder.
+const compileURL = "mem://schema"
+
+// Compile turns a decoded JSON Schema document (map[string]any, bool, or the
+// output of encoding/json with UseNumber) into a *Schema, using v6's compiler.
 func Compile(doc any) (*Schema, error) {
-	return &Schema{doc: doc}, nil
+	c := v6.NewCompiler()
+	if err := c.AddResource(compileURL, doc); err != nil {
+		return nil, fmt.Errorf("jsonschema: add resource: %w", err)
+	}
+	sch, err := c.Compile(compileURL)
+	if err != nil {
+		return nil, fmt.Errorf("jsonschema: compile: %w", err)
+	}
+	return &Schema{c: sch}, nil
 }
 
-// Validate reports whether the instance satisfies the schema.
-//
-// Not implemented yet: always returns ErrNotImplemented.
-func (s *Schema) Validate(instance any) error {
-	return ErrNotImplemented
+// usesUnimplemented reports the first schema feature outside sections 1-5 that
+// the compiled schema relies on, or "" if the schema is fully within the
+// implemented surface. It is read from v6's compiled form: a populated field is
+// a keyword the author wrote. Reference, applicator, and unevaluated* fields all
+// gate to ErrNotImplemented; the fields sections 1-5 handle are ignored here.
+func usesUnimplemented(s *v6.Schema) string {
+	switch {
+	// Section 1: type-agnostic assertions.
+	// Format is populated by v6 ONLY when it will assert (draft-07 and earlier
+	// by default; 2019/2020 when the metaschema requires the vocab). A populated
+	// Format therefore means "v6 asserts this" — gate it rather than silently
+	// skip it, or a pre-2019 {"format":...} schema would pass invalid input.
+	case s.Format != nil:
+		return "format"
+	// Content vocabulary: annotation-only unless AssertContent() was set on the
+	// compiler. Our Compile never sets it, so these are nil today — but gate them
+	// so the "any populated assertion field is gated" invariant holds regardless
+	// of how the schema was compiled.
+	case s.ContentSchema != nil, s.ContentEncoding != nil, s.ContentMediaType != nil:
+		return "content"
+	// Section 7: references.
+	case s.Ref != nil:
+		return "$ref"
+	case s.RecursiveRef != nil:
+		return "$recursiveRef"
+	case s.DynamicRef != nil:
+		return "$dynamicRef"
+	// Section 6: applicators.
+	case s.Not != nil:
+		return "not"
+	case len(s.AllOf) > 0:
+		return "allOf"
+	case len(s.AnyOf) > 0:
+		return "anyOf"
+	case len(s.OneOf) > 0:
+		return "oneOf"
+	case s.If != nil:
+		return "if"
+	// Section 2/3: object/array applicator subschemas.
+	case s.PropertyNames != nil:
+		return "propertyNames"
+	case len(s.Properties) > 0:
+		return "properties"
+	case len(s.PatternProperties) > 0:
+		return "patternProperties"
+	case s.AdditionalProperties != nil:
+		return "additionalProperties"
+	case len(s.Dependencies) > 0:
+		return "dependencies"
+	case len(s.DependentSchemas) > 0:
+		return "dependentSchemas"
+	case s.Contains != nil:
+		return "contains"
+	case s.Items != nil:
+		return "items"
+	case s.AdditionalItems != nil:
+		return "additionalItems"
+	case len(s.PrefixItems) > 0:
+		return "prefixItems"
+	case s.Items2020 != nil:
+		return "items"
+	// Section 9: unevaluated.
+	case s.UnevaluatedProperties != nil:
+		return "unevaluatedProperties"
+	case s.UnevaluatedItems != nil:
+		return "unevaluatedItems"
+	// Extensions carry custom vocabularies we do not yet run.
+	case len(s.Extensions) > 0:
+		return "extension vocabulary"
+	}
+	return ""
 }

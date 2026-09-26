@@ -1,6 +1,7 @@
 package jsonschema
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -40,6 +41,18 @@ type suiteGroup struct {
 
 type score struct{ pass, fail, unsupported int }
 
+// decodeSuiteJSON decodes a suite schema or instance with UseNumber so that the
+// integer/number distinction (1 vs 1.0) survives — the evaluator relies on it.
+func decodeSuiteJSON(raw json.RawMessage) (any, error) {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	var v any
+	if err := dec.Decode(&v); err != nil {
+		return nil, err
+	}
+	return v, nil
+}
+
 func TestSuiteCompliance(t *testing.T) {
 	dir := filepath.Join(suiteRoot, *draftFilter)
 	if _, err := os.Stat(dir); err != nil {
@@ -71,8 +84,8 @@ func TestSuiteCompliance(t *testing.T) {
 
 		fs := score{}
 		for _, g := range groups {
-			var schemaDoc any
-			if err := json.Unmarshal(g.Schema, &schemaDoc); err != nil {
+			schemaDoc, err := decodeSuiteJSON(g.Schema)
+			if err != nil {
 				t.Fatalf("%s / %q: schema decode: %v", name, g.Description, err)
 			}
 			sch, err := Compile(schemaDoc)
@@ -82,8 +95,8 @@ func TestSuiteCompliance(t *testing.T) {
 				continue
 			}
 			for _, tc := range g.Tests {
-				var instance any
-				if err := json.Unmarshal(tc.Data, &instance); err != nil {
+				instance, err := decodeSuiteJSON(tc.Data)
+				if err != nil {
 					t.Fatalf("%s / %q / %q: data decode: %v", name, g.Description, tc.Description, err)
 				}
 				verr := sch.Validate(instance)

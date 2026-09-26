@@ -11,8 +11,37 @@ swap — but validates against the parser's tape instead of walking a
 reference implementation.
 
 > Status: early. The API compatibility and architecture are settled; draft
-> coverage is earned against the official test suite and is not yet claimed
-> here.
+> coverage is earned against the official test suite.
+
+## Compliance
+
+Measured against the official [JSON-Schema-Test-Suite](https://github.com/json-schema-org/JSON-Schema-Test-Suite)
+for **draft2020-12** (46 keyword files, 1255 cases). *Unsupported* cases return
+`ErrNotImplemented` and are never scored as a wrong verdict — zero *fail* is the
+hard bar.
+
+| Metric | Cases |
+|---|---:|
+| ✅ pass | 511 |
+| ❌ fail | 0 |
+| ⏳ unsupported | 744 |
+| **total** | **1255** |
+
+Implemented (green): the type-agnostic assertions (`type`, `const`, `enum`) and
+the object / array / string / number keyword families.
+
+| Section | Keywords | Status |
+|---|---|---|
+| Type-agnostic | `type`, `const`, `enum` | ✅ implemented |
+| Object | `minProperties`, `maxProperties`, `required`, `dependentRequired` | ✅ implemented |
+| Array | `minItems`, `maxItems`, `uniqueItems` | ✅ implemented |
+| String | `minLength`, `maxLength`, `pattern` | ✅ implemented |
+| Number | `minimum`, `maximum`, `exclusiveMinimum`, `exclusiveMaximum`, `multipleOf` | ✅ implemented |
+| Applicators | `allOf`, `anyOf`, `oneOf`, `not`, `if`/`then`/`else` | ⏳ `ErrNotImplemented` |
+| Object/array applicators | `properties`, `patternProperties`, `additionalProperties`, `items`, `contains`, … | ⏳ `ErrNotImplemented` |
+| References | `$ref`, `$dynamicRef`, `$recursiveRef` | ⏳ `ErrNotImplemented` |
+| Unevaluated | `unevaluatedProperties`, `unevaluatedItems` | ⏳ `ErrNotImplemented` |
+| `format` / `content*` | asserting `format`, content vocabulary | ⏳ gated (`ErrNotImplemented`) |
 
 ## Why
 
