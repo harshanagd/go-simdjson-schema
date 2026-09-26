@@ -66,6 +66,27 @@ Get the [JSON-Schema-Test-Suite](https://github.com/json-schema-org/JSON-Schema-
 green before optimising anything. A fast, wrong validator is worthless — the
 Blaze paper found several popular validators failing 200+ suite cases.
 
+## Benchmarks
+
+`BenchmarkValidate` compares this validator's `Validate` against
+santhosh-tekuri/jsonschema v6's, one sub-benchmark per keyword file, over the
+subset of suite cases this evaluator supports (cases we gate are skipped so the
+comparison is like-for-like). Both validators walk the same decoded `any`
+instance, so this measures **evaluator vs evaluator on a shared backend** — the
+go-simdjson tape backend is a later seam, so this does not yet include the
+parse-side (materialisation) win described above.
+
+```bash
+# ours vs v6, per keyword, with allocations
+GOWORK=off go test -run '^$' -bench BenchmarkValidate -benchmem .
+
+# a single keyword pair
+GOWORK=off go test -run '^$' -bench 'BenchmarkValidate/type/' -benchmem .
+```
+
+Each keyword yields two lines, `<keyword>/ours` and `<keyword>/v6`, comparable
+directly or via `benchstat`.
+
 ## Running the tests
 
 The conformance suite is vendored as a git submodule. After cloning, initialise
