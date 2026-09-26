@@ -1,0 +1,22 @@
+version: "2"
+
+linters:
+  enable:
+    - govet
+    - staticcheck
+    - errcheck
+    - ineffassign
+    - unused
+  exclusions:
+    rules:
+      # The compliance harness builds schemas and instances from raw suite JSON;
+      # its error handling is deliberately terse (t.Fatal on decode).
+      - path: _test\.go
+        linters:
+          - errcheck
+
+# Report every finding. The defaults cap same-text issues at 3, which hides
+# repeated findings across the keyword evaluator.
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

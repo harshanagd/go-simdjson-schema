@@ -1,0 +1,55 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          # golangci-lint typechecks the stdlib SOURCE of the toolchain in PATH,
+          # so it cannot analyse a Go newer than the one it was built with. Keep
+          # this at the linter's build minor and bump both lines together; do not
+          # set it back to `stable`, which breaks on the next Go release.
+          go-version: '1.26'
+      - uses: golangci/golangci-lint-action@v7
+        with:
+          # Pinned so a linter release cannot break CI on an unchanged tree.
+          version: v2.12.2
+
+  test:
+    strategy:
+      matrix:
+        include:
+          # The go.mod floor is the binding constraint on what the source may
+          # use; `stable` catches breakage from a new toolchain the pinned lint
+          # job above can no longer see.
+          - os: ubuntu-latest
+            go: '1.26'
+          - os: ubuntu-latest
+            go: stable
+          - os: ubuntu-24.04-arm
+            go: '1.26'
+          - os: ubuntu-24.04-arm
+            go: stable
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The conformance harness walks the JSON-Schema-Test-Suite submodule;
+          # without this it finds no suite and skips instead of gating.
+          submodules: true
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+      - name: Build
+        run: go build ./...
+      - name: Vet
+        run: go vet ./...
+      - name: Test
+        run: go test -v -race -count=1 ./...
