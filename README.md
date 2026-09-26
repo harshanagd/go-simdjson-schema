@@ -12,8 +12,7 @@ reference implementation.
 
 > Status: early. The API compatibility and architecture are settled; draft
 > coverage is earned against the official test suite and is not yet claimed
-> here. See [`docs/`](docs/) for the design, the number-exactness spec, and the
-> parser hooks this validator depends on.
+> here.
 
 ## Why
 
@@ -28,15 +27,47 @@ tape, so validation walks the tape in place.
 
 Reuse v6's compiler (its `$ref`/`$id`/anchor/vocabulary/draft-detection/
 meta-schema plumbing is thousands of lines of hard, correct spec work) and
-write a **new evaluator** against the go-simdjson tape. This is option **B** in
-[`docs/design.md`](docs/design.md), built so the instruction-stream compiler
-(option C, Blaze-style) is reachable incrementally.
+write a **new evaluator** against the go-simdjson tape. This is option **B**,
+built so the instruction-stream compiler (option C, Blaze-style) is reachable
+incrementally.
 
 ## Correctness first
 
 Get the [JSON-Schema-Test-Suite](https://github.com/json-schema-org/JSON-Schema-Test-Suite)
 green before optimising anything. A fast, wrong validator is worthless — the
 Blaze paper found several popular validators failing 200+ suite cases.
+
+## Running the tests
+
+The conformance suite is vendored as a git submodule. After cloning, initialise
+it:
+
+```bash
+git submodule update --init --recursive
+```
+
+The compliance harness walks the official
+[JSON-Schema-Test-Suite](https://github.com/json-schema-org/JSON-Schema-Test-Suite)
+and prints a per-keyword scoreboard, sorted worst-first so the next thing to
+work on is at the top. It classifies every case as **pass** (verdict matches),
+**fail** (wrong verdict — always surfaced), or **unsupported**
+(`ErrNotImplemented` — not counted against the build while the evaluator is a
+stub). A file drops off the worklist once it reaches `fail=0 unsupported=0`.
+
+```bash
+# Run the harness (scoreboard prints via t.Log, so -v is required to see it).
+GOWORK=off go test . -v
+
+# Pick a different draft directory (default: draft2020-12).
+GOWORK=off go test . -v -draft draft7
+
+# Turn the scoreboard into a gate: fail on any wrong or unsupported case.
+GOWORK=off go test . -v -strict
+```
+
+`GOWORK=off` bypasses any enclosing Go workspace so the module is tested
+directly. If an uncached dependency fetch fails because the module proxy is
+unreachable, add `GOPROXY=direct GOSUMDB=off` to pull from the VCS host.
 
 ## Licence
 
