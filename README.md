@@ -22,13 +22,13 @@ hard bar.
 
 | Metric | Cases |
 |---|---:|
-| ✅ pass | 511 |
+| ✅ pass | 620 |
 | ❌ fail | 0 |
-| ⏳ unsupported | 744 |
+| ⏳ unsupported | 635 |
 | **total** | **1255** |
 
-Implemented (green): the type-agnostic assertions (`type`, `const`, `enum`) and
-the object / array / string / number keyword families.
+Implemented (green): the type-agnostic assertions (`type`, `const`, `enum`), the
+object / array / string / number keyword families, and the in-place applicators.
 
 | Section | Keywords | Status |
 |---|---|---|
@@ -37,7 +37,7 @@ the object / array / string / number keyword families.
 | Array | `minItems`, `maxItems`, `uniqueItems` | ✅ implemented |
 | String | `minLength`, `maxLength`, `pattern` | ✅ implemented |
 | Number | `minimum`, `maximum`, `exclusiveMinimum`, `exclusiveMaximum`, `multipleOf` | ✅ implemented |
-| Applicators | `allOf`, `anyOf`, `oneOf`, `not`, `if`/`then`/`else` | ⏳ `ErrNotImplemented` |
+| Applicators | `allOf`, `anyOf`, `oneOf`, `not`, `if`/`then`/`else` | ✅ implemented |
 | Object/array applicators | `properties`, `patternProperties`, `additionalProperties`, `items`, `contains`, … | ⏳ `ErrNotImplemented` |
 | References | `$ref`, `$dynamicRef`, `$recursiveRef` | ⏳ `ErrNotImplemented` |
 | Unevaluated | `unevaluatedProperties`, `unevaluatedItems` | ⏳ `ErrNotImplemented` |

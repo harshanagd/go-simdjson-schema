@@ -81,18 +81,9 @@ func usesUnimplemented(s *v6.Schema) string {
 		return "$recursiveRef"
 	case s.DynamicRef != nil:
 		return "$dynamicRef"
-	// Section 6: applicators.
-	case s.Not != nil:
-		return "not"
-	case len(s.AllOf) > 0:
-		return "allOf"
-	case len(s.AnyOf) > 0:
-		return "anyOf"
-	case len(s.OneOf) > 0:
-		return "oneOf"
-	case s.If != nil:
-		return "if"
-	// Section 2/3: object/array applicator subschemas.
+	// Section 2/3: object/array applicator subschemas. These interact with the
+	// annotation tracker (section 9) and are a later slice; still gated. The
+	// pure applicators (not/allOf/anyOf/oneOf/if) are implemented — not here.
 	case s.PropertyNames != nil:
 		return "propertyNames"
 	case len(s.Properties) > 0:

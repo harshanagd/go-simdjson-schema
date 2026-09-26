@@ -19,13 +19,17 @@ import (
 // are accepted; decimal assertions on that path recover the shortest
 // round-tripping decimal (value.go).
 func (s *Schema) Validate(instance any) error {
-	if kw := usesUnimplemented(s.c); kw != "" {
-		return fmt.Errorf("%w: %s", ErrNotImplemented, kw)
-	}
 	return validate(s.c, instance)
 }
 
 func validate(c *v6.Schema, v any) error {
+	// The gate is checked per schema, not just at the top level: an applicator
+	// subschema may itself use a keyword we do not implement, and that must
+	// surface as ErrNotImplemented rather than a silently-skipped assertion.
+	if kw := usesUnimplemented(c); kw != "" {
+		return fmt.Errorf("%w: %s", ErrNotImplemented, kw)
+	}
+
 	if c.Bool != nil {
 		if *c.Bool {
 			return nil
@@ -44,20 +48,32 @@ func validate(c *v6.Schema, v any) error {
 		return &ValidationError{Msg: "value not in enum"}
 	}
 
-	// Sections 2-5 are type-scoped: each family only applies to its type.
+	// Sections 2-5 are type-scoped: each family only applies to its type. These
+	// do NOT return early — applicators (section 6) run regardless of type and
+	// in addition to the type-scoped keywords.
 	switch tv := v.(type) {
 	case string:
-		return validateString(c, tv)
+		if err := validateString(c, tv); err != nil {
+			return err
+		}
 	case []any:
-		return validateArray(c, tv)
+		if err := validateArray(c, tv); err != nil {
+			return err
+		}
 	case map[string]any:
-		return validateObject(c, tv)
+		if err := validateObject(c, tv); err != nil {
+			return err
+		}
 	default:
 		if isNumber(v) {
-			return validateNumber(c, v)
+			if err := validateNumber(c, v); err != nil {
+				return err
+			}
 		}
 	}
-	return nil
+
+	// Section 6: applicators (not / allOf / anyOf / oneOf / if-then-else).
+	return validateApplicators(c, v)
 }
 
 // typesMatch reports whether the instance satisfies the schema's `type` set.
