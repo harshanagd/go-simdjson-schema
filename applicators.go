@@ -15,33 +15,33 @@ import (
 // ErrNotImplemented from a subschema is propagated, never swallowed: an anyOf
 // branch that uses an unimplemented keyword must surface as unsupported, not be
 // silently treated as a non-match (which could flip the verdict).
-func validateApplicators(c *v6.Schema, v any) error {
+func validateApplicators(c *v6.Schema, v any, path *refStack) error {
 	if c.Not != nil {
-		if err := validateNot(c.Not, v); err != nil {
+		if err := validateNot(c.Not, v, path); err != nil {
 			return err
 		}
 	}
 
 	if len(c.AllOf) > 0 {
-		if err := validateAllOf(c.AllOf, v); err != nil {
+		if err := validateAllOf(c.AllOf, v, path); err != nil {
 			return err
 		}
 	}
 
 	if len(c.AnyOf) > 0 {
-		if err := validateAnyOf(c.AnyOf, v); err != nil {
+		if err := validateAnyOf(c.AnyOf, v, path); err != nil {
 			return err
 		}
 	}
 
 	if len(c.OneOf) > 0 {
-		if err := validateOneOf(c.OneOf, v); err != nil {
+		if err := validateOneOf(c.OneOf, v, path); err != nil {
 			return err
 		}
 	}
 
 	if c.If != nil {
-		if err := validateIfThenElse(c, v); err != nil {
+		if err := validateIfThenElse(c, v, path); err != nil {
 			return err
 		}
 	}
@@ -49,8 +49,8 @@ func validateApplicators(c *v6.Schema, v any) error {
 	return nil
 }
 
-func validateNot(sub *v6.Schema, v any) error {
-	err := validate(sub, v)
+func validateNot(sub *v6.Schema, v any, path *refStack) error {
+	err := validate(sub, v, path)
 	if errors.Is(err, ErrNotImplemented) {
 		return err
 	}
@@ -60,9 +60,9 @@ func validateNot(sub *v6.Schema, v any) error {
 	return nil
 }
 
-func validateAllOf(subs []*v6.Schema, v any) error {
+func validateAllOf(subs []*v6.Schema, v any, path *refStack) error {
 	for i, sub := range subs {
-		if err := validate(sub, v); err != nil {
+		if err := validate(sub, v, path); err != nil {
 			if errors.Is(err, ErrNotImplemented) {
 				return err
 			}
@@ -72,9 +72,9 @@ func validateAllOf(subs []*v6.Schema, v any) error {
 	return nil
 }
 
-func validateAnyOf(subs []*v6.Schema, v any) error {
+func validateAnyOf(subs []*v6.Schema, v any, path *refStack) error {
 	for _, sub := range subs {
-		err := validate(sub, v)
+		err := validate(sub, v, path)
 		if errors.Is(err, ErrNotImplemented) {
 			return err
 		}
@@ -85,10 +85,10 @@ func validateAnyOf(subs []*v6.Schema, v any) error {
 	return &ValidationError{Msg: "value does not match any anyOf subschema"}
 }
 
-func validateOneOf(subs []*v6.Schema, v any) error {
+func validateOneOf(subs []*v6.Schema, v any, path *refStack) error {
 	matched := 0
 	for _, sub := range subs {
-		err := validate(sub, v)
+		err := validate(sub, v, path)
 		if errors.Is(err, ErrNotImplemented) {
 			return err
 		}
@@ -102,15 +102,15 @@ func validateOneOf(subs []*v6.Schema, v any) error {
 	return nil
 }
 
-func validateIfThenElse(c *v6.Schema, v any) error {
-	ifErr := validate(c.If, v)
+func validateIfThenElse(c *v6.Schema, v any, path *refStack) error {
+	ifErr := validate(c.If, v, path)
 	if errors.Is(ifErr, ErrNotImplemented) {
 		return ifErr
 	}
 	if ifErr == nil {
 		// `if` passed: `then` must pass (if present).
 		if c.Then != nil {
-			if err := validate(c.Then, v); err != nil {
+			if err := validate(c.Then, v, path); err != nil {
 				if errors.Is(err, ErrNotImplemented) {
 					return err
 				}
@@ -121,7 +121,7 @@ func validateIfThenElse(c *v6.Schema, v any) error {
 	}
 	// `if` failed: `else` must pass (if present).
 	if c.Else != nil {
-		if err := validate(c.Else, v); err != nil {
+		if err := validate(c.Else, v, path); err != nil {
 			if errors.Is(err, ErrNotImplemented) {
 				return err
 			}

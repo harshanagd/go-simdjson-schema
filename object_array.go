@@ -51,7 +51,7 @@ func (c *conj) result() error {
 // objValidate. Annotation tracking (for unevaluated*) is not built here — that
 // keyword stays gated, and without it the evaluated-set does not affect the
 // verdict.
-func validateObjectApplicators(c *v6.Schema, obj map[string]any) error {
+func validateObjectApplicators(c *v6.Schema, obj map[string]any, path *refStack) error {
 	var cj conj
 
 	// The property-dependency keyword, across drafts. dependencies (draft ≤7)
@@ -77,7 +77,7 @@ func validateObjectApplicators(c *v6.Schema, obj map[string]any) error {
 				}
 			}
 		case *v6.Schema:
-			if cj.add(wrapOrPropagate(validate(d, obj), fmt.Sprintf("dependencies subschema for %q", pname))) {
+			if cj.add(wrapOrPropagate(validate(d, obj, path), fmt.Sprintf("dependencies subschema for %q", pname))) {
 				return cj.result()
 			}
 		}
@@ -90,7 +90,7 @@ func validateObjectApplicators(c *v6.Schema, obj map[string]any) error {
 		if _, ok := obj[pname]; !ok {
 			continue
 		}
-		if cj.add(wrapOrPropagate(validate(sub, obj), fmt.Sprintf("dependentSchemas for %q", pname))) {
+		if cj.add(wrapOrPropagate(validate(sub, obj, path), fmt.Sprintf("dependentSchemas for %q", pname))) {
 			return cj.result()
 		}
 	}
@@ -100,7 +100,7 @@ func validateObjectApplicators(c *v6.Schema, obj map[string]any) error {
 
 		if sub, ok := c.Properties[pname]; ok {
 			evaluated = true
-			if cj.add(wrapOrPropagate(validate(sub, pvalue), fmt.Sprintf("property %q", pname))) {
+			if cj.add(wrapOrPropagate(validate(sub, pvalue, path), fmt.Sprintf("property %q", pname))) {
 				return cj.result()
 			}
 		}
@@ -108,7 +108,7 @@ func validateObjectApplicators(c *v6.Schema, obj map[string]any) error {
 		for regex, sub := range c.PatternProperties {
 			if regex.MatchString(pname) {
 				evaluated = true
-				if cj.add(wrapOrPropagate(validate(sub, pvalue), fmt.Sprintf("patternProperties match for %q", pname))) {
+				if cj.add(wrapOrPropagate(validate(sub, pvalue, path), fmt.Sprintf("patternProperties match for %q", pname))) {
 					return cj.result()
 				}
 			}
@@ -123,7 +123,7 @@ func validateObjectApplicators(c *v6.Schema, obj map[string]any) error {
 					}
 				}
 			case *v6.Schema:
-				if cj.add(wrapOrPropagate(validate(ap, pvalue), fmt.Sprintf("additionalProperties for %q", pname))) {
+				if cj.add(wrapOrPropagate(validate(ap, pvalue, path), fmt.Sprintf("additionalProperties for %q", pname))) {
 					return cj.result()
 				}
 			}
@@ -132,7 +132,7 @@ func validateObjectApplicators(c *v6.Schema, obj map[string]any) error {
 
 	if c.PropertyNames != nil {
 		for pname := range obj {
-			if cj.add(wrapOrPropagate(validate(c.PropertyNames, pname), fmt.Sprintf("propertyNames for %q", pname))) {
+			if cj.add(wrapOrPropagate(validate(c.PropertyNames, pname, path), fmt.Sprintf("propertyNames for %q", pname))) {
 				return cj.result()
 			}
 		}
@@ -145,7 +145,7 @@ func validateObjectApplicators(c *v6.Schema, obj map[string]any) error {
 // contains/minContains/maxContains. It mirrors v6's arrValidate, covering both
 // the draft-<2020 (Items + AdditionalItems) and 2020 (PrefixItems + Items2020)
 // shapes.
-func validateArrayApplicators(c *v6.Schema, arr []any) error {
+func validateArrayApplicators(c *v6.Schema, arr []any, path *refStack) error {
 	var cj conj
 	evaluated := 0
 
@@ -153,13 +153,13 @@ func validateArrayApplicators(c *v6.Schema, arr []any) error {
 		// Draft 2020 shape.
 		evaluated = min(len(c.PrefixItems), len(arr))
 		for i := 0; i < evaluated; i++ {
-			if cj.add(wrapOrPropagate(validate(c.PrefixItems[i], arr[i]), fmt.Sprintf("prefixItems[%d]", i))) {
+			if cj.add(wrapOrPropagate(validate(c.PrefixItems[i], arr[i], path), fmt.Sprintf("prefixItems[%d]", i))) {
 				return cj.result()
 			}
 		}
 		if c.Items2020 != nil {
 			for i := evaluated; i < len(arr); i++ {
-				if cj.add(wrapOrPropagate(validate(c.Items2020, arr[i]), fmt.Sprintf("items[%d]", i))) {
+				if cj.add(wrapOrPropagate(validate(c.Items2020, arr[i], path), fmt.Sprintf("items[%d]", i))) {
 					return cj.result()
 				}
 			}
@@ -169,7 +169,7 @@ func validateArrayApplicators(c *v6.Schema, arr []any) error {
 		switch items := c.Items.(type) {
 		case *v6.Schema:
 			for i, item := range arr {
-				if cj.add(wrapOrPropagate(validate(items, item), fmt.Sprintf("items[%d]", i))) {
+				if cj.add(wrapOrPropagate(validate(items, item, path), fmt.Sprintf("items[%d]", i))) {
 					return cj.result()
 				}
 			}
@@ -177,7 +177,7 @@ func validateArrayApplicators(c *v6.Schema, arr []any) error {
 		case []*v6.Schema:
 			evaluated = min(len(arr), len(items))
 			for i := 0; i < evaluated; i++ {
-				if cj.add(wrapOrPropagate(validate(items[i], arr[i]), fmt.Sprintf("items[%d]", i))) {
+				if cj.add(wrapOrPropagate(validate(items[i], arr[i], path), fmt.Sprintf("items[%d]", i))) {
 					return cj.result()
 				}
 			}
@@ -194,7 +194,7 @@ func validateArrayApplicators(c *v6.Schema, arr []any) error {
 			}
 		case *v6.Schema:
 			for i := evaluated; i < len(arr); i++ {
-				if cj.add(wrapOrPropagate(validate(ai, arr[i]), fmt.Sprintf("additionalItems[%d]", i))) {
+				if cj.add(wrapOrPropagate(validate(ai, arr[i], path), fmt.Sprintf("additionalItems[%d]", i))) {
 					return cj.result()
 				}
 			}
@@ -204,7 +204,7 @@ func validateArrayApplicators(c *v6.Schema, arr []any) error {
 	if c.Contains != nil {
 		// contains is not a conjunction — it has its own counting semantics and
 		// propagates ErrNotImplemented directly, so it is not folded into cj.
-		if err := validateContains(c, arr); err != nil {
+		if err := validateContains(c, arr, path); err != nil {
 			// A definite contains failure outranks a deferred unsupported sibling.
 			if !errors.Is(err, ErrNotImplemented) {
 				return err
@@ -218,10 +218,10 @@ func validateArrayApplicators(c *v6.Schema, arr []any) error {
 
 // validateContains implements contains + minContains/maxContains. Default
 // minContains is 1 (at least one item must match) unless minContains is set.
-func validateContains(c *v6.Schema, arr []any) error {
+func validateContains(c *v6.Schema, arr []any, path *refStack) error {
 	matched := 0
 	for _, item := range arr {
-		err := validate(c.Contains, item)
+		err := validate(c.Contains, item, path)
 		if errors.Is(err, ErrNotImplemented) {
 			return err
 		}

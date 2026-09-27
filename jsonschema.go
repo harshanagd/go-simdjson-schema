@@ -74,12 +74,24 @@ func usesUnimplemented(s *v6.Schema) string {
 	// of how the schema was compiled.
 	case s.ContentSchema != nil, s.ContentEncoding != nil, s.ContentMediaType != nil:
 		return "content"
-	// Section 7: references.
-	case s.Ref != nil:
-		return "$ref"
-	case s.RecursiveRef != nil:
+	// Section 7: references. $ref/$recursiveRef are resolved by v6 at compile
+	// time into direct *Schema pointers, so the evaluator follows the pointer
+	// (validate.go) — not gated. TWO exceptions need v6's unexported dynamic
+	// scope machinery and stay gated:
+	//   - $recursiveRef whose static target carries $recursiveAnchor: true — v6
+	//     re-resolves it through the runtime scope (resolveRecursiveAnchor), so
+	//     following the static pointer would resolve nested nodes to the base
+	//     (lax) schema instead of the extending (strict) one — a false PASS.
+	//   - $dynamicRef carrying a dynamic Anchor — resolution differs by runtime
+	//     scope via the unexported dynamicAnchors map. This deliberately also
+	//     gates the rare shape whose anchor matches no $dynamicAnchor in scope
+	//     (which spec-behaves like a plain $ref): gating it is conservative — it
+	//     reports unsupported rather than risk a wrong verdict, never a false PASS.
+	// The anchor-free case of each is a plain lexical reference and is followed
+	// statically (correct, matches v6).
+	case s.RecursiveRef != nil && s.RecursiveRef.RecursiveAnchor:
 		return "$recursiveRef"
-	case s.DynamicRef != nil:
+	case s.DynamicRef != nil && s.DynamicRef.Anchor != "":
 		return "$dynamicRef"
 	// Section 9: unevaluated. These consume the annotation set produced by the
 	// object/array applicators; still gated until the tracker is built.

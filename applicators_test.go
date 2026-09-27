@@ -40,19 +40,20 @@ func TestIfThenElse(t *testing.T) {
 // through EVERY applicator, not be silently treated as a non-match — otherwise
 // a dropped guard could flip a verdict. One case per helper.
 func TestApplicatorPropagatesUnsupported(t *testing.T) {
-	ref := `"$ref":"#/$defs/x"`
-	defs := `"$defs":{"x":{"type":"string"}}`
+	// unevaluatedProperties is still gated (section 9). Nesting it inside each
+	// applicator must surface as unsupported rather than a silent non-match.
+	ref := `"unevaluatedProperties":false`
 	cases := map[string]string{
-		"anyOf": `{"anyOf":[{` + ref + `}],` + defs + `}`,
-		"allOf": `{"allOf":[{` + ref + `}],` + defs + `}`,
-		"oneOf": `{"oneOf":[{` + ref + `}],` + defs + `}`,
-		"not":   `{"not":{` + ref + `},` + defs + `}`,
-		"if":    `{"if":{` + ref + `},"then":{"type":"string"},` + defs + `}`,
+		"anyOf": `{"anyOf":[{` + ref + `}]}`,
+		"allOf": `{"allOf":[{` + ref + `}]}`,
+		"oneOf": `{"oneOf":[{` + ref + `}]}`,
+		"not":   `{"not":{` + ref + `}}`,
+		"if":    `{"if":{` + ref + `},"then":{"type":"object"}}`,
 	}
 	for name, schema := range cases {
 		t.Run(name, func(t *testing.T) {
 			s := compileJSON(t, schema)
-			inst, err := decodeSuiteJSON(json.RawMessage(`"hello"`))
+			inst, err := decodeSuiteJSON(json.RawMessage(`{}`))
 			if err != nil {
 				t.Fatal(err)
 			}

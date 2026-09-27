@@ -19,15 +19,42 @@ import (
 // are accepted; decimal assertions on that path recover the shortest
 // round-tripping decimal (value.go).
 func (s *Schema) Validate(instance any) error {
-	return validate(s.c, instance)
+	// path is the $ref-cycle guard. It is a stack local (a chunked set that
+	// grows by recursion, never to the heap — see ref.go) threaded through the
+	// recursion by pointer. On a ref-free schema no chunk is ever filled, so it
+	// costs one zero-valued struct on the frame and nothing else.
+	var path refStack
+	return validate(s.c, instance, &path)
 }
 
-func validate(c *v6.Schema, v any) error {
+func validate(c *v6.Schema, v any, path *refStack) error {
 	// The gate is checked per schema, not just at the top level: an applicator
 	// subschema may itself use a keyword we do not implement, and that must
 	// surface as ErrNotImplemented rather than a silently-skipped assertion.
 	if kw := usesUnimplemented(c); kw != "" {
 		return fmt.Errorf("%w: %s", ErrNotImplemented, kw)
+	}
+
+	// Section 7: references. v6 resolves $ref/$recursiveRef at compile time into
+	// direct *Schema pointers, and DynamicRef.Ref is the lexically-nearest
+	// (single-context) dynamic target — so following the pointer is the whole
+	// job, with cycle detection via path. Genuinely multi-context $dynamicRef
+	// (an Anchor whose resolution differs by runtime scope) is gated in
+	// usesUnimplemented and never reaches here.
+	if c.Ref != nil {
+		if err := followRef(c.Ref, v, path); err != nil {
+			return err
+		}
+	}
+	if c.RecursiveRef != nil {
+		if err := followRef(c.RecursiveRef, v, path); err != nil {
+			return err
+		}
+	}
+	if c.DynamicRef != nil && c.DynamicRef.Ref != nil {
+		if err := followRef(c.DynamicRef.Ref, v, path); err != nil {
+			return err
+		}
 	}
 
 	if c.Bool != nil {
@@ -57,11 +84,11 @@ func validate(c *v6.Schema, v any) error {
 			return err
 		}
 	case []any:
-		if err := validateArray(c, tv); err != nil {
+		if err := validateArray(c, tv, path); err != nil {
 			return err
 		}
 	case map[string]any:
-		if err := validateObject(c, tv); err != nil {
+		if err := validateObject(c, tv, path); err != nil {
 			return err
 		}
 	default:
@@ -73,7 +100,7 @@ func validate(c *v6.Schema, v any) error {
 	}
 
 	// Section 6: applicators (not / allOf / anyOf / oneOf / if-then-else).
-	return validateApplicators(c, v)
+	return validateApplicators(c, v, path)
 }
 
 // typesMatch reports whether the instance satisfies the schema's `type` set.
@@ -127,7 +154,7 @@ func validateString(c *v6.Schema, str string) error {
 	return nil
 }
 
-func validateArray(c *v6.Schema, arr []any) error {
+func validateArray(c *v6.Schema, arr []any, path *refStack) error {
 	if c.MinItems != nil && len(arr) < *c.MinItems {
 		return &ValidationError{Msg: fmt.Sprintf("array length %d < minItems %d", len(arr), *c.MinItems)}
 	}
@@ -139,10 +166,10 @@ func validateArray(c *v6.Schema, arr []any) error {
 	}
 	// Array applicator subschemas (items / prefixItems / additionalItems /
 	// contains / minContains / maxContains).
-	return validateArrayApplicators(c, arr)
+	return validateArrayApplicators(c, arr, path)
 }
 
-func validateObject(c *v6.Schema, obj map[string]any) error {
+func validateObject(c *v6.Schema, obj map[string]any, path *refStack) error {
 	if c.MinProperties != nil && len(obj) < *c.MinProperties {
 		return &ValidationError{Msg: fmt.Sprintf("object has %d properties < minProperties %d", len(obj), *c.MinProperties)}
 	}
@@ -167,7 +194,7 @@ func validateObject(c *v6.Schema, obj map[string]any) error {
 	}
 	// Object applicator subschemas (properties / patternProperties /
 	// additionalProperties / propertyNames / dependentSchemas / dependencies).
-	return validateObjectApplicators(c, obj)
+	return validateObjectApplicators(c, obj, path)
 }
 
 func validateNumber(c *v6.Schema, v any) error {
