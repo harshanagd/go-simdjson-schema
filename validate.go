@@ -101,6 +101,16 @@ func validate(c *v6.Schema, v any, path *refStack, parentES evalSet) error {
 		if err := validateString(c, tv); err != nil {
 			return err
 		}
+		// Section: format assertion. v6 populates c.Format only when it has
+		// decided this format must assert (draft default or WithFormatAssertion),
+		// and Validate closes over the matching RFC check — so a non-nil return
+		// is a format violation. Scoped to strings; format never applies to other
+		// types.
+		if c.Format != nil {
+			if err := c.Format.Validate(tv); err != nil {
+				return &ValidationError{Msg: "value does not match format " + c.Format.Name}
+			}
+		}
 	case []any:
 		if err := validateArray(c, tv, path, es); err != nil {
 			return err

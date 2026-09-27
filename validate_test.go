@@ -74,15 +74,51 @@ func TestUniqueItemsValueEquality(t *testing.T) {
 	validates(t, `{"uniqueItems":true}`, `[1,1.0]`, false) // 1 and 1.0 are equal by value
 }
 
-// A draft-07 schema asserts format by default, so v6 populates Format. We must
-// gate it as unsupported, not silently pass invalid input.
-func TestFormatAssertionIsGated(t *testing.T) {
+// A draft-07 schema asserts format by default, so an invalid value fails and a
+// valid one passes — no gating.
+func TestFormatAssertsOnDraft7(t *testing.T) {
 	s := compileJSON(t, `{"$schema":"http://json-schema.org/draft-07/schema#","format":"ipv4"}`)
-	inst, err := decodeSuiteJSON(json.RawMessage(`"999.999.999.999"`))
+	bad, err := decodeSuiteJSON(json.RawMessage(`"999.999.999.999"`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Validate(inst); !errors.Is(err, ErrNotImplemented) {
-		t.Fatalf("want ErrNotImplemented for asserted format, got %v", err)
+	if err := s.Validate(bad); err == nil || errors.Is(err, ErrNotImplemented) {
+		t.Fatalf("want a format violation, got %v", err)
+	}
+	good, err := decodeSuiteJSON(json.RawMessage(`"192.168.0.1"`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Validate(good); err != nil {
+		t.Fatalf("want valid ipv4 to pass, got %v", err)
+	}
+}
+
+// On draft2020-12 format is annotation-only by default, so an invalid value
+// passes unless assertion is opted in with WithFormatAssertion.
+func TestFormatAnnotationOnlyByDefaultOn2020(t *testing.T) {
+	doc, err := decodeSuiteJSON(json.RawMessage(`{"$schema":"https://json-schema.org/draft/2020-12/schema","format":"ipv4"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	bad, err := decodeSuiteJSON(json.RawMessage(`"not-an-ip"`))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	annot, err := Compile(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := annot.Validate(bad); err != nil {
+		t.Fatalf("annotation-only: want pass, got %v", err)
+	}
+
+	asserted, err := Compile(doc, WithFormatAssertion())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := asserted.Validate(bad); err == nil {
+		t.Fatalf("WithFormatAssertion: want a format violation, got nil")
 	}
 }

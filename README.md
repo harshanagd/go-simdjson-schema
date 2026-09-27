@@ -16,23 +16,24 @@ reference implementation.
 ## Compliance
 
 Measured against the official [JSON-Schema-Test-Suite](https://github.com/json-schema-org/JSON-Schema-Test-Suite)
-for **draft2020-12** (46 keyword files, 1255 cases). *Unsupported* cases return
-`ErrNotImplemented` and are never scored as a wrong verdict — zero *fail* is the
-hard bar.
+for **draft2020-12** — the 46 keyword files plus the scored `optional/format/`
+tree (a few formats needing full ECMA-262 regex or IDNA are skipped, the same
+set v6 skips). *Unsupported* cases return `ErrNotImplemented` and are never
+scored as a wrong verdict — zero *fail* is the hard bar.
 
 | Metric | Cases |
 |---|---:|
-| ✅ pass | 1216 |
+| ✅ pass | 1631 |
 | ❌ fail | 0 |
 | ⏳ unsupported | 39 |
-| **total** | **1255** |
 
 Implemented (green): the type-agnostic assertions (`type`, `const`, `enum`), the
 object / array / string / number keyword families, the in-place applicators, the
 object / array applicator subschemas (`properties`, `items`, `contains`, …), the
 references (`$ref`, `$recursiveRef`, single-context `$dynamicRef`, and remote
-`$ref` via a caller-supplied resource/loader), and the unevaluated applicators
-(`unevaluatedProperties`, `unevaluatedItems`).
+`$ref` via a caller-supplied resource/loader), the unevaluated applicators
+(`unevaluatedProperties`, `unevaluatedItems`), and asserting `format` (opt-in via
+`WithFormatAssertion`, reusing v6's RFC validators).
 
 | Section | Keywords | Status |
 |---|---|---|
@@ -47,7 +48,8 @@ references (`$ref`, `$recursiveRef`, single-context `$dynamicRef`, and remote
 | References (remote) | remote `$ref` via `Compile` + `WithResource`/`WithLoader` | ✅ implemented |
 | References (dynamic) | multi-context `$dynamicRef`/`$recursiveRef` (runtime-scope resolution) | ⏳ `ErrNotImplemented` |
 | Unevaluated | `unevaluatedProperties`, `unevaluatedItems` | ✅ implemented |
-| `format` / `content*` | asserting `format`, content vocabulary | ⏳ gated (`ErrNotImplemented`) |
+| `format` | asserting `format` (opt-in `WithFormatAssertion`) | ✅ implemented |
+| `content*` | content vocabulary | ⏳ gated (`ErrNotImplemented`) |
 
 ## Why
 

@@ -27,6 +27,17 @@ var (
 
 const suiteRoot = "testdata/JSON-Schema-Test-Suite/tests"
 
+// formatSkip lists optional/format files whose formats are out of scope for a
+// Go RE2 / stdlib backend — the same set v6's own harness skips. Excluded from
+// scoring rather than counted as fails: ecmascript-regex needs full ECMA-262
+// regex (Go's regexp is RE2), and the IDN formats need IDNA/Unicode machinery
+// beyond the built-in validators.
+var formatSkip = map[string]struct{}{
+	"ecmascript-regex.json": {},
+	"idn-email.json":        {},
+	"idn-hostname.json":     {},
+}
+
 // suiteRemotesDir holds the suite's remote schema fixtures. Every $ref to a
 // remote in the suite uses the http://localhost:1234/ prefix, which suiteRemotes
 // maps onto this directory.
@@ -75,11 +86,29 @@ func TestSuiteCompliance(t *testing.T) {
 	}
 	sort.Strings(files)
 
+	// The optional/format/ tree is scored with format assertion enabled (the
+	// cases are written to be run that way), mirroring v6's own harness. A few
+	// files exercise formats out of scope for a Go RE2 / stdlib backend — the
+	// same set v6 skips — so they are excluded rather than counted as fails.
+	formatFiles, err := filepath.Glob(filepath.Join(dir, "optional", "format", "*.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sort.Strings(formatFiles)
+
 	total := score{}
 	perFile := map[string]score{}
 
-	for _, file := range files {
+	// scoreFile walks one suite file and folds its result into the scoreboard.
+	// assertFormat adds WithFormatAssertion for the optional/format tree.
+	scoreFile := func(file string, assertFormat bool) {
 		name := filepath.Base(file)
+		if assertFormat {
+			if _, skip := formatSkip[name]; skip {
+				return
+			}
+			name = "format/" + name
+		}
 		raw, err := os.ReadFile(file)
 		if err != nil {
 			t.Fatalf("%s: %v", name, err)
@@ -95,7 +124,11 @@ func TestSuiteCompliance(t *testing.T) {
 			if err != nil {
 				t.Fatalf("%s / %q: schema decode: %v", name, g.Description, err)
 			}
-			sch, err := Compile(schemaDoc, WithLoader(suiteRemotes(suiteRemotesDir)))
+			opts := []Option{WithLoader(suiteRemotes(suiteRemotesDir))}
+			if assertFormat {
+				opts = append(opts, WithFormatAssertion())
+			}
+			sch, err := Compile(schemaDoc, opts...)
 			if err != nil {
 				// A compile failure counts as unsupported for now.
 				fs.unsupported += len(g.Tests)
@@ -127,6 +160,13 @@ func TestSuiteCompliance(t *testing.T) {
 		total.unsupported += fs.unsupported
 	}
 
+	for _, file := range files {
+		scoreFile(file, false)
+	}
+	for _, file := range formatFiles {
+		scoreFile(file, true)
+	}
+
 	// Scoreboard, sorted by most-failing then most-unsupported so the next thing
 	// to work on is at the top.
 	names := make([]string, 0, len(perFile))
@@ -145,7 +185,7 @@ func TestSuiteCompliance(t *testing.T) {
 	})
 
 	t.Logf("=== %s compliance: %d pass, %d fail, %d unsupported (%d files) ===",
-		*draftFilter, total.pass, total.fail, total.unsupported, len(files))
+		*draftFilter, total.pass, total.fail, total.unsupported, len(perFile))
 	for _, n := range names {
 		s := perFile[n]
 		if s.fail == 0 && s.unsupported == 0 {

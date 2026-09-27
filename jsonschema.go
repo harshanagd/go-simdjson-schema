@@ -60,8 +60,9 @@ type resource struct {
 }
 
 type options struct {
-	resources []resource // eager pre-seeded docs, in call order
-	loader    URLLoader  // lazy resolver for cache misses
+	resources    []resource // eager pre-seeded docs, in call order
+	loader       URLLoader  // lazy resolver for cache misses
+	assertFormat bool       // enable format assertion on all drafts
 }
 
 // WithResource pre-registers a schema document under an absolute url, so a $ref
@@ -84,6 +85,16 @@ func WithLoader(loader URLLoader) Option {
 	return func(o *options) { o.loader = loader }
 }
 
+// WithFormatAssertion enables `format` as an assertion. Mirrors v6's
+// Compiler.AssertFormat. Without it, `format` follows the draft default: it
+// asserts on draft-07 and earlier, and is annotation-only (ignored) on
+// draft/2019-09 and draft/2020-12 unless the metaschema requires the
+// format-assertion vocabulary. With it, a populated `format` asserts on every
+// draft, using v6's built-in RFC validators.
+func WithFormatAssertion() Option {
+	return func(o *options) { o.assertFormat = true }
+}
+
 // Compile turns a decoded JSON Schema document (map[string]any, bool, or the
 // output of encoding/json with UseNumber) into a *Schema, using v6's compiler.
 // Reference resolution to other documents is configured with WithResource
@@ -96,6 +107,9 @@ func Compile(doc any, opts ...Option) (*Schema, error) {
 	}
 
 	c := v6.NewCompiler()
+	if o.assertFormat {
+		c.AssertFormat()
+	}
 	if o.loader != nil {
 		c.UseLoader(v6Loader{o.loader})
 	}
@@ -131,12 +145,6 @@ func (a v6Loader) Load(url string) (any, error) { return a.l.Load(url) }
 func usesUnimplemented(s *v6.Schema) string {
 	switch {
 	// Section 1: type-agnostic assertions.
-	// Format is populated by v6 ONLY when it will assert (draft-07 and earlier
-	// by default; 2019/2020 when the metaschema requires the vocab). A populated
-	// Format therefore means "v6 asserts this" — gate it rather than silently
-	// skip it, or a pre-2019 {"format":...} schema would pass invalid input.
-	case s.Format != nil:
-		return "format"
 	// Content vocabulary: annotation-only unless AssertContent() was set on the
 	// compiler. Our Compile never sets it, so these are nil today — but gate them
 	// so the "any populated assertion field is gated" invariant holds regardless
