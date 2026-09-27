@@ -8,11 +8,14 @@
 // Compilation reuses v6's compiler (its $ref/$id/anchor/vocabulary/draft-
 // detection plumbing is thousands of lines of correct spec work — design.md
 // option B). What is new here is the evaluator: it reads the exported fields of
-// v6's compiled *jsonschema.Schema and validates against them. This first slice
-// covers the type-agnostic assertions and the object/array/string/number
-// keyword families (sections 1-5); any schema whose compiled form carries an
-// applicator, $ref, or unevaluated* keyword returns ErrNotImplemented so an
-// instance is never partially validated then silently passed.
+// v6's compiled *jsonschema.Schema and validates against them. The evaluator
+// covers the type-agnostic assertions, the object/array/string/number keyword
+// families, the in-place and object/array applicators, the references
+// (including anchored $dynamicRef/$recursiveRef, resolved fork-free against a
+// reconstructed dynamic scope — dynamic.go), the unevaluated applicators, and
+// asserting format. What remains gated to ErrNotImplemented is the content
+// vocabulary and any custom (Extension) vocabulary, so an instance is never
+// partially validated then silently passed.
 package jsonschema
 
 import (
@@ -23,16 +26,20 @@ import (
 )
 
 // ErrNotImplemented is returned for schema features the evaluator does not yet
-// support (applicators, $ref, unevaluated*, dynamic refs). The compliance
-// harness counts it as "unsupported".
+// support: the content vocabulary (contentEncoding/contentMediaType/
+// contentSchema) and custom (Extension) vocabularies. The compliance harness
+// counts it as "unsupported".
 var ErrNotImplemented = errors.New("jsonschema: schema feature not implemented")
 
 // Schema is a compiled JSON Schema. It wraps v6's compiled schema (the source of
-// truth for the schema's shape) and the evaluator reads its exported fields. It
-// will grow to lower v6's tree into the tape evaluator's instruction stream
-// (design.md option B->C).
+// truth for the schema's shape); the evaluator reads its exported fields, and da
+// carries the reconstructed dynamic-anchor index for anchored $dynamicRef/
+// $recursiveRef resolution (nil when the schema declares no dynamic/recursive
+// anchor). It will grow to lower v6's tree into the tape evaluator's instruction
+// stream (design.md option B->C).
 type Schema struct {
-	c *v6.Schema
+	c  *v6.Schema
+	da *dynAnchors // reconstructed dynamic-anchor index; nil if no $dynamicAnchor
 }
 
 // compileURL is the synthetic base URI given to an in-memory schema document.
@@ -159,7 +166,7 @@ func Compile(doc any, opts ...Option) (*Schema, error) {
 	if err != nil {
 		return nil, fmt.Errorf("jsonschema: compile: %w", err)
 	}
-	return &Schema{c: sch}, nil
+	return &Schema{c: sch, da: buildDynAnchors(sch, doc, c)}, nil
 }
 
 // v6Loader adapts our public URLLoader to v6's identical interface, keeping v6
@@ -196,25 +203,11 @@ func usesUnimplemented(s *v6.Schema) string {
 	// of how the schema was compiled.
 	case s.ContentSchema != nil, s.ContentEncoding != nil, s.ContentMediaType != nil:
 		return "content"
-	// Section 7: references. $ref/$recursiveRef are resolved by v6 at compile
-	// time into direct *Schema pointers, so the evaluator follows the pointer
-	// (validate.go) — not gated. TWO exceptions need v6's unexported dynamic
-	// scope machinery and stay gated:
-	//   - $recursiveRef whose static target carries $recursiveAnchor: true — v6
-	//     re-resolves it through the runtime scope (resolveRecursiveAnchor), so
-	//     following the static pointer would resolve nested nodes to the base
-	//     (lax) schema instead of the extending (strict) one — a false PASS.
-	//   - $dynamicRef carrying a dynamic Anchor — resolution differs by runtime
-	//     scope via the unexported dynamicAnchors map. This deliberately also
-	//     gates the rare shape whose anchor matches no $dynamicAnchor in scope
-	//     (which spec-behaves like a plain $ref): gating it is conservative — it
-	//     reports unsupported rather than risk a wrong verdict, never a false PASS.
-	// The anchor-free case of each is a plain lexical reference and is followed
-	// statically (correct, matches v6).
-	case s.RecursiveRef != nil && s.RecursiveRef.RecursiveAnchor:
-		return "$recursiveRef"
-	case s.DynamicRef != nil && s.DynamicRef.Anchor != "":
-		return "$dynamicRef"
+	// Section 7 references, including the anchored dynamic forms, are now
+	// resolved (section 7b): $ref/$recursiveRef/$dynamicRef all follow a *Schema
+	// pointer, with the anchored $dynamicRef/$recursiveRef re-resolved against
+	// the reconstructed runtime dynamic scope (dynamic.go, validate.go). None are
+	// gated here.
 	// Extensions carry custom vocabularies we do not yet run.
 	case len(s.Extensions) > 0:
 		return "extension vocabulary"

@@ -36,31 +36,37 @@ func TestIfThenElse(t *testing.T) {
 	validates(t, s, `true`, false) // not integer → else: string ✗
 }
 
-// A subschema using an unimplemented keyword must propagate ErrNotImplemented
-// through EVERY applicator, not be silently treated as a non-match — otherwise
-// a dropped guard could flip a verdict. One case per helper.
-func TestApplicatorPropagatesUnsupported(t *testing.T) {
-	// An anchored $dynamicRef is still gated (needs runtime-scope resolution).
-	// Nesting it inside each applicator must surface as unsupported rather than a
-	// silent non-match. defs supplies the $dynamicAnchor the ref names.
-	ref := `"$dynamicRef":"#x"`
-	defs := `"$defs":{"d":{"$dynamicAnchor":"x","type":"string"}}`
+// An anchored $dynamicRef nested inside each in-place applicator must resolve
+// through the runtime dynamic scope (section 7b) — the threading carries the
+// scope into every applicator branch. Each case constrains items to type:string
+// via the dynamic anchor; a non-string must be rejected through the applicator.
+func TestApplicatorThreadsDynamicScope(t *testing.T) {
+	ref := `"items":{"$dynamicRef":"#items"}`
+	defs := `"$defs":{"foo":{"$dynamicAnchor":"items","type":"string"}}`
+	// Each schema wraps an array-typed subschema (carrying the $dynamicRef) in one
+	// applicator, so the anchor must resolve inside that applicator's branch.
 	cases := map[string]string{
-		"anyOf": `{"$id":"mem://a","anyOf":[{` + ref + `}],` + defs + `}`,
-		"allOf": `{"$id":"mem://b","allOf":[{` + ref + `}],` + defs + `}`,
-		"oneOf": `{"$id":"mem://c","oneOf":[{` + ref + `}],` + defs + `}`,
-		"not":   `{"$id":"mem://d","not":{` + ref + `},` + defs + `}`,
-		"if":    `{"$id":"mem://e","if":{` + ref + `},"then":{"type":"object"},` + defs + `}`,
+		"anyOf": `{"$id":"mem://a","anyOf":[{"type":"array",` + ref + `}],` + defs + `}`,
+		"allOf": `{"$id":"mem://b","allOf":[{"type":"array",` + ref + `}],` + defs + `}`,
+		"oneOf": `{"$id":"mem://c","oneOf":[{"type":"array",` + ref + `}],` + defs + `}`,
+		"then":  `{"$id":"mem://e","if":{"type":"array"},"then":{"type":"array",` + ref + `},` + defs + `}`,
 	}
 	for name, schema := range cases {
 		t.Run(name, func(t *testing.T) {
-			s := compileJSON(t, schema)
-			inst, err := decodeSuiteJSON(json.RawMessage(`{}`))
+			good, err := decodeSuiteJSON(json.RawMessage(`["x"]`))
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := s.Validate(inst); !errors.Is(err, ErrNotImplemented) {
-				t.Fatalf("%s: want ErrNotImplemented propagated, got %v", name, err)
+			bad, err := decodeSuiteJSON(json.RawMessage(`[1]`))
+			if err != nil {
+				t.Fatal(err)
+			}
+			s := compileJSON(t, schema)
+			if err := s.Validate(good); err != nil {
+				t.Fatalf("%s: want string item to pass, got %v", name, err)
+			}
+			if err := s.Validate(bad); err == nil || errors.Is(err, ErrNotImplemented) {
+				t.Fatalf("%s: want non-string item rejected via the anchor, got %v", name, err)
 			}
 		})
 	}

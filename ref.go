@@ -91,11 +91,11 @@ func instancePtr(v any) uintptr {
 // by the pair. All set mechanics (growth, spill, sibling-independence) live in
 // refStack.with. child is addressed here to keep the hot path threading a
 // pointer; the copy happens only on this rare ref-follow, not per validate call.
-func followRef(target *v6.Schema, v any, path *refStack, es evalSet) error {
+func followRef(target *v6.Schema, v any, path *refStack, es evalSet, dr dref) error {
 	k := refKey{schema: target, instPtr: instancePtr(v)}
 	if path.has(k) {
 		return nil
 	}
 	child := path.with(k)
-	return validate(target, v, &child, es)
+	return validate(target, v, &child, es, dr)
 }

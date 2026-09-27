@@ -16,23 +16,25 @@ reference implementation.
 ## Compliance
 
 Measured against the official [JSON-Schema-Test-Suite](https://github.com/json-schema-org/JSON-Schema-Test-Suite)
-for **draft2020-12** — the 46 keyword files plus the scored `optional/format/`
-tree (the IDNA formats and the one `ecmascript-regex` case asserting a specific
-escape is *invalid* are skipped, the same set v6 skips despite shipping the same
-regex opt-in). *Unsupported* cases return `ErrNotImplemented` and are never
-scored as a wrong verdict — zero *fail* is the hard bar.
+for **draft2020-12** and **draft2019-09** — the keyword files plus the scored
+`optional/format/` tree (the IDNA formats and the one `ecmascript-regex` case
+asserting a specific escape is *invalid* are skipped, the same set v6 skips
+despite shipping the same regex opt-in). *Unsupported* cases return
+`ErrNotImplemented` and are never scored as a wrong verdict — zero *fail* is the
+hard bar. Both drafts are fully green with zero unsupported cases.
 
-| Metric | Cases |
-|---|---:|
-| ✅ pass | 1631 |
-| ❌ fail | 0 |
-| ⏳ unsupported | 39 |
+| Metric | draft2020-12 | draft2019-09 |
+|---|---:|---:|
+| ✅ pass | 1670 | 1635 |
+| ❌ fail | 0 | 0 |
+| ⏳ unsupported | 0 | 0 |
 
 Implemented (green): the type-agnostic assertions (`type`, `const`, `enum`), the
 object / array / string / number keyword families, the in-place applicators, the
 object / array applicator subschemas (`properties`, `items`, `contains`, …), the
-references (`$ref`, `$recursiveRef`, single-context `$dynamicRef`, and remote
-`$ref` via a caller-supplied resource/loader), the unevaluated applicators
+references (`$ref`, `$recursiveRef`, `$dynamicRef` including anchored runtime-scope
+resolution, and remote `$ref` via a caller-supplied resource/loader), the
+unevaluated applicators
 (`unevaluatedProperties`, `unevaluatedItems`), and asserting `format` (opt-in via
 `WithFormatAssertion`, reusing v6's RFC validators). `pattern`, `patternProperties`
 and the `regex` format use Go's RE2 by default; a caller can supply an ECMA-262
@@ -48,9 +50,8 @@ constructs RE2 rejects.
 | Number | `minimum`, `maximum`, `exclusiveMinimum`, `exclusiveMaximum`, `multipleOf` | ✅ implemented |
 | Applicators | `allOf`, `anyOf`, `oneOf`, `not`, `if`/`then`/`else` | ✅ implemented |
 | Object/array applicators | `properties`, `patternProperties`, `additionalProperties`, `propertyNames`, `dependentSchemas`, `items`, `prefixItems`, `contains`, `minContains`, `maxContains` | ✅ implemented |
-| References | `$ref`, `$recursiveRef`, single-context `$dynamicRef` | ✅ implemented |
+| References | `$ref`, `$recursiveRef`, `$dynamicRef` (incl. anchored runtime-scope) | ✅ implemented |
 | References (remote) | remote `$ref` via `Compile` + `WithResource`/`WithLoader` | ✅ implemented |
-| References (dynamic) | multi-context `$dynamicRef`/`$recursiveRef` (runtime-scope resolution) | ⏳ `ErrNotImplemented` |
 | Unevaluated | `unevaluatedProperties`, `unevaluatedItems` | ✅ implemented |
 | `format` | asserting `format` (opt-in `WithFormatAssertion`) | ✅ implemented |
 | `content*` | content vocabulary | ⏳ gated (`ErrNotImplemented`) |

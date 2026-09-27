@@ -1,8 +1,6 @@
 package jsonschema
 
 import (
-	"encoding/json"
-	"errors"
 	"testing"
 )
 
@@ -39,32 +37,23 @@ func TestRefSiblingScalarsNotACycle(t *testing.T) {
 	validates(t, s, `["a",1]`, false) // second item must still be type-checked
 }
 
-// A $dynamicRef carrying a dynamic anchor needs runtime-scope resolution we do
-// not implement, so it stays gated rather than silently using the static target.
-func TestDynamicRefWithAnchorGated(t *testing.T) {
-	s := compileJSON(t, `{"$id":"mem://r","type":"array","items":{"$dynamicRef":"#items"},
-		"$defs":{"foo":{"$dynamicAnchor":"items","type":"string"}}}`)
-	inst, err := decodeSuiteJSON(json.RawMessage(`["x"]`))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := s.Validate(inst); !errors.Is(err, ErrNotImplemented) {
-		t.Fatalf("want ErrNotImplemented for anchored $dynamicRef, got %v", err)
-	}
+// An anchored $dynamicRef resolves through the runtime dynamic scope (section
+// 7b): with only the bookend anchor in scope it behaves as the lexical target.
+func TestDynamicRefWithAnchorResolves(t *testing.T) {
+	s := `{"$id":"mem://r","type":"array","items":{"$dynamicRef":"#items"},
+		"$defs":{"foo":{"$dynamicAnchor":"items","type":"string"}}}`
+	validates(t, s, `["x"]`, true) // items resolve to type:string
+	validates(t, s, `[1]`, false)  // a non-string item is rejected by the anchor
 }
 
-// A $recursiveRef whose target carries $recursiveAnchor:true is resolved by v6
-// through the runtime scope; following the static pointer would wrongly resolve
-// nested nodes to the base (lax) schema — a false PASS. It must stay gated.
-func TestRecursiveRefWithAnchorGated(t *testing.T) {
-	s := compileJSON(t, `{"$schema":"https://json-schema.org/draft/2019-09/schema",
+// A $recursiveRef with $recursiveAnchor:true resolves through the runtime scope
+// to the outermost recursive-anchor resource, so nested nodes are constrained by
+// the extending schema — the invalid inner value must be caught.
+func TestRecursiveRefWithAnchorResolves(t *testing.T) {
+	s := `{"$schema":"https://json-schema.org/draft/2019-09/schema",
 		"$id":"mem://tree","$recursiveAnchor":true,
-		"type":"object","properties":{"children":{"type":"array","items":{"$recursiveRef":"#"}}}}`)
-	inst, err := decodeSuiteJSON(json.RawMessage(`{"children":[{}]}`))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := s.Validate(inst); !errors.Is(err, ErrNotImplemented) {
-		t.Fatalf("want ErrNotImplemented for anchored $recursiveRef, got %v", err)
-	}
+		"type":"object","properties":{"v":{"type":"number"},
+		"children":{"type":"array","items":{"$recursiveRef":"#"}}}}`
+	validates(t, s, `{"v":1,"children":[{"v":2}]}`, true)
+	validates(t, s, `{"v":1,"children":[{"v":"bad"}]}`, false) // inner v not a number
 }

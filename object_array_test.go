@@ -1,7 +1,6 @@
 package jsonschema
 
 import (
-	"encoding/json"
 	"errors"
 	"testing"
 )
@@ -52,34 +51,43 @@ func TestPrefixItemsAndItems(t *testing.T) {
 	validates(t, s, `["x","x"]`, false) // first prefix item not integer
 }
 
-// A gated keyword nested inside an object applicator must propagate.
-func TestObjectApplicatorPropagatesUnsupported(t *testing.T) {
-	// An anchored $dynamicRef is still gated; nesting it inside a property
-	// subschema must surface as unsupported, not a silent pass.
-	s := compileJSON(t, `{"$id":"mem://o","properties":{"a":{"$dynamicRef":"#x"}},"$defs":{"d":{"$dynamicAnchor":"x","type":"string"}}}`)
-	inst, err := decodeSuiteJSON(json.RawMessage(`{"a":{}}`))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := s.Validate(inst); !errors.Is(err, ErrNotImplemented) {
-		t.Fatalf("want ErrNotImplemented propagated from nested gated keyword, got %v", err)
-	}
+// An anchored $dynamicRef nested inside an object applicator resolves through
+// the runtime scope (section 7b): the property subschema constrains via the
+// dynamic anchor, so a mismatching value is rejected — not silently passed.
+func TestObjectApplicatorResolvesDynamicRef(t *testing.T) {
+	s := `{"$id":"mem://o","type":"array","items":{"$dynamicRef":"#el"},
+		"$defs":{"foo":{"$dynamicAnchor":"el","type":"string"}}}`
+	validates(t, s, `["x"]`, true)
+	validates(t, s, `[1]`, false) // element must be a string per the resolved anchor
 }
 
-// A definite failure in a conjunction must win over a gated sibling regardless
-// of map-iteration order — the verdict must be a deterministic INVALID, never a
-// run-dependent "unsupported". Property "a" definitely fails its type; sibling
-// "b" carries a gated anchored $dynamicRef. Run enough times to shuffle map order.
+// conj must let a definite failure outrank a deferred ErrNotImplemented
+// regardless of the order results arrive (map iteration is unordered), so a
+// conjunction with any definite failure is a deterministic INVALID, never a
+// run-dependent "unsupported". No keyword still gates per-subschema through the
+// public API (references, applicators, unevaluated*, format are all
+// implemented; only whole-document content/custom vocabularies gate), so this
+// precedence is exercised directly on conj rather than via Compile.
 func TestConjunctionPrefersDefiniteFailure(t *testing.T) {
-	s := compileJSON(t, `{"$id":"mem://cj","properties":{"a":{"type":"integer"},"b":{"$dynamicRef":"#x"}},"$defs":{"d":{"$dynamicAnchor":"x","type":"string"}}}`)
-	inst, err := decodeSuiteJSON(json.RawMessage(`{"a":"not-an-int","b":{}}`))
-	if err != nil {
-		t.Fatal(err)
+	fail := &ValidationError{Msg: "definite"}
+	unsup := ErrNotImplemented
+	// Both arrival orders must resolve to the definite failure.
+	var a conj
+	a.add(unsup)
+	a.add(fail)
+	if a.result() != error(fail) {
+		t.Fatalf("unsupported-then-failure: want the definite failure, got %v", a.result())
 	}
-	for i := 0; i < 50; i++ {
-		verr := s.Validate(inst)
-		if verr == nil || errors.Is(verr, ErrNotImplemented) {
-			t.Fatalf("want a definite ValidationError (a fails type), got %v", verr)
-		}
+	var b conj
+	b.add(fail)
+	b.add(unsup)
+	if b.result() != error(fail) {
+		t.Fatalf("failure-then-unsupported: want the definite failure, got %v", b.result())
+	}
+	// With only an unsupported branch, the deferred unsupported is the verdict.
+	var c conj
+	c.add(unsup)
+	if !errors.Is(c.result(), ErrNotImplemented) {
+		t.Fatalf("unsupported-only: want ErrNotImplemented, got %v", c.result())
 	}
 }

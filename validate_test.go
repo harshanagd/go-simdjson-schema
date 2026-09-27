@@ -52,16 +52,44 @@ func TestConstNumberEquality(t *testing.T) {
 	validates(t, `{"const":1}`, `1.0`, true) // 1 == 1.0 by value
 }
 
-func TestUnknownKeywordIsUnsupported(t *testing.T) {
-	// An anchored $dynamicRef needs runtime-scope resolution we do not implement,
-	// so it stays gated (section 7 dynamic remainder).
-	s := compileJSON(t, `{"$id":"mem://u","type":"array","items":{"$dynamicRef":"#x"},"$defs":{"d":{"$dynamicAnchor":"x","type":"string"}}}`)
-	inst, err := decodeSuiteJSON(json.RawMessage(`["y"]`))
+// A custom vocabulary the compiler surfaces as an Extension is the remaining
+// gated surface (references incl. anchored dynamic refs, applicators,
+// unevaluated*, and format are all implemented). A meta-schema declaring an
+// unknown vocabulary as required makes v6 populate Extensions, which
+// usesUnimplemented gates to ErrNotImplemented — the false-PASS floor for a
+// schema outside the implemented surface.
+func TestCustomVocabularyIsUnsupported(t *testing.T) {
+	meta := `{
+		"$schema":"https://json-schema.org/draft/2020-12/schema",
+		"$id":"mem://meta",
+		"$vocabulary":{
+			"https://json-schema.org/draft/2020-12/vocab/core":true,
+			"mem://vocab/custom":true
+		},
+		"$dynamicAnchor":"meta",
+		"allOf":[{"$ref":"https://json-schema.org/draft/2020-12/schema"}]
+	}`
+	schema := `{"$schema":"mem://meta","type":"string"}`
+	sDoc, err := decodeSuiteJSON(json.RawMessage(schema))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mDoc, err := decodeSuiteJSON(json.RawMessage(meta))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := Compile(sDoc, WithResource("mem://meta", mDoc))
+	if err != nil {
+		// An unknown required vocabulary can be rejected at compile time, which is
+		// also a valid "unsupported" signal.
+		return
+	}
+	inst, err := decodeSuiteJSON(json.RawMessage(`"y"`))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := s.Validate(inst); !errors.Is(err, ErrNotImplemented) {
-		t.Fatal("want ErrNotImplemented for anchored $dynamicRef, got nil (silent pass)")
+		t.Fatalf("want ErrNotImplemented for a custom vocabulary extension, got %v", err)
 	}
 }
 
