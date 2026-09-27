@@ -122,3 +122,27 @@ func TestFormatAnnotationOnlyByDefaultOn2020(t *testing.T) {
 		t.Fatalf("WithFormatAssertion: want a format violation, got nil")
 	}
 }
+
+// WithRegexpEngine lets a pattern using an ECMA-262 construct Go RE2 rejects
+// (here \cc, a control-character escape) compile and match, where the default
+// engine fails to compile the schema at all.
+func TestWithRegexpEngineAcceptsEcmaPattern(t *testing.T) {
+	doc, err := decodeSuiteJSON(json.RawMessage(`{"type":"string","pattern":"^\\cc$"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Compile(doc); err == nil {
+		t.Fatalf("default RE2 engine: want compile to reject \\cc, got nil")
+	}
+	s, err := Compile(doc, WithRegexpEngine(dlclarkCompile))
+	if err != nil {
+		t.Fatalf("regexp2 engine: want compile to accept \\cc, got %v", err)
+	}
+	inst, err := decodeSuiteJSON(json.RawMessage(`"\u0003"`)) // \cc == U+0003
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Validate(inst); err != nil {
+		t.Fatalf("regexp2 engine: want \\u0003 to match ^\\cc$, got %v", err)
+	}
+}

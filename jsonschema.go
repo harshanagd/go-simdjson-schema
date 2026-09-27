@@ -50,6 +50,23 @@ type URLLoader interface {
 	Load(url string) (any, error)
 }
 
+// Regexp is a compiled regular expression, used for pattern, patternProperties
+// and the `regex` format. It mirrors v6's Regexp interface so a caller can
+// supply an alternative engine (e.g. ECMA-262 via dlclark/regexp2) through
+// WithRegexpEngine.
+type Regexp interface {
+	// MatchString reports whether the string contains any match of the regexp.
+	MatchString(string) bool
+	// String returns the source pattern.
+	String() string
+}
+
+// RegexpEngine compiles a pattern into a Regexp. It mirrors v6's RegexpEngine.
+// The default (used when WithRegexpEngine is not passed) is Go's regexp package
+// (RE2), which rejects some ECMA-262 constructs; supply an ECMA-262 engine to
+// close those cases.
+type RegexpEngine func(string) (Regexp, error)
+
 // Option configures a Compile call. Options mirror v6's compiler-configuration
 // surface for reference resolution.
 type Option func(*options)
@@ -60,9 +77,10 @@ type resource struct {
 }
 
 type options struct {
-	resources    []resource // eager pre-seeded docs, in call order
-	loader       URLLoader  // lazy resolver for cache misses
-	assertFormat bool       // enable format assertion on all drafts
+	resources    []resource   // eager pre-seeded docs, in call order
+	loader       URLLoader    // lazy resolver for cache misses
+	assertFormat bool         // enable format assertion on all drafts
+	regexpEngine RegexpEngine // custom regexp engine, nil = v6 default (Go RE2)
 }
 
 // WithResource pre-registers a schema document under an absolute url, so a $ref
@@ -95,6 +113,16 @@ func WithFormatAssertion() Option {
 	return func(o *options) { o.assertFormat = true }
 }
 
+// WithRegexpEngine sets the regexp engine used to compile pattern,
+// patternProperties and the `regex` format. Mirrors v6's
+// Compiler.UseRegexpEngine. The default is Go's regexp (RE2), which rejects
+// some ECMA-262 constructs; pass an ECMA-262 engine (e.g. an adapter over
+// dlclark/regexp2 compiled with the ECMAScript flag) to accept them. A nil
+// engine restores the default.
+func WithRegexpEngine(engine RegexpEngine) Option {
+	return func(o *options) { o.regexpEngine = engine }
+}
+
 // Compile turns a decoded JSON Schema document (map[string]any, bool, or the
 // output of encoding/json with UseNumber) into a *Schema, using v6's compiler.
 // Reference resolution to other documents is configured with WithResource
@@ -109,6 +137,9 @@ func Compile(doc any, opts ...Option) (*Schema, error) {
 	c := v6.NewCompiler()
 	if o.assertFormat {
 		c.AssertFormat()
+	}
+	if o.regexpEngine != nil {
+		c.UseRegexpEngine(v6RegexpEngine(o.regexpEngine))
 	}
 	if o.loader != nil {
 		c.UseLoader(v6Loader{o.loader})
@@ -136,6 +167,20 @@ func Compile(doc any, opts ...Option) (*Schema, error) {
 type v6Loader struct{ l URLLoader }
 
 func (a v6Loader) Load(url string) (any, error) { return a.l.Load(url) }
+
+// v6RegexpEngine adapts our public RegexpEngine to v6's, keeping v6 out of the
+// public signature. Our Regexp interface is structurally identical to v6's, so
+// a compiled Regexp satisfies v6.Regexp directly; only the func's return type
+// needs converting.
+func v6RegexpEngine(engine RegexpEngine) v6.RegexpEngine {
+	return func(pattern string) (v6.Regexp, error) {
+		re, err := engine(pattern)
+		if err != nil {
+			return nil, err
+		}
+		return re, nil
+	}
+}
 
 // usesUnimplemented reports the first schema feature outside sections 1-5 that
 // the compiled schema relies on, or "" if the schema is fully within the

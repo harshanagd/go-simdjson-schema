@@ -17,8 +17,9 @@ reference implementation.
 
 Measured against the official [JSON-Schema-Test-Suite](https://github.com/json-schema-org/JSON-Schema-Test-Suite)
 for **draft2020-12** — the 46 keyword files plus the scored `optional/format/`
-tree (a few formats needing full ECMA-262 regex or IDNA are skipped, the same
-set v6 skips). *Unsupported* cases return `ErrNotImplemented` and are never
+tree (the IDNA formats and the one `ecmascript-regex` case asserting a specific
+escape is *invalid* are skipped, the same set v6 skips despite shipping the same
+regex opt-in). *Unsupported* cases return `ErrNotImplemented` and are never
 scored as a wrong verdict — zero *fail* is the hard bar.
 
 | Metric | Cases |
@@ -33,7 +34,10 @@ object / array applicator subschemas (`properties`, `items`, `contains`, …), t
 references (`$ref`, `$recursiveRef`, single-context `$dynamicRef`, and remote
 `$ref` via a caller-supplied resource/loader), the unevaluated applicators
 (`unevaluatedProperties`, `unevaluatedItems`), and asserting `format` (opt-in via
-`WithFormatAssertion`, reusing v6's RFC validators).
+`WithFormatAssertion`, reusing v6's RFC validators). `pattern`, `patternProperties`
+and the `regex` format use Go's RE2 by default; a caller can supply an ECMA-262
+engine via `WithRegexpEngine` (mirroring v6's `UseRegexpEngine`) to accept
+constructs RE2 rejects.
 
 | Section | Keywords | Status |
 |---|---|---|

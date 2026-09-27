@@ -2,6 +2,9 @@ module github.com/harshanagd/go-simdjson-schema
 
 go 1.26
 
-require github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
+require (
+	github.com/dlclark/regexp2 v1.11.0 // used for testing
+	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
+)
 
 require golang.org/x/text v0.14.0 // indirect

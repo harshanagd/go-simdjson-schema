@@ -11,6 +11,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/dlclark/regexp2"
 )
 
 // The compliance harness walks the official JSON-Schema-Test-Suite and reports
@@ -27,11 +29,16 @@ var (
 
 const suiteRoot = "testdata/JSON-Schema-Test-Suite/tests"
 
-// formatSkip lists optional/format files whose formats are out of scope for a
-// Go RE2 / stdlib backend — the same set v6's own harness skips. Excluded from
-// scoring rather than counted as fails: ecmascript-regex needs full ECMA-262
-// regex (Go's regexp is RE2), and the IDN formats need IDNA/Unicode machinery
-// beyond the built-in validators.
+// formatSkip lists optional/format files excluded from scoring rather than
+// counted as fails — the same set v6's own harness skips.
+//   - ecmascript-regex.json: its sole case asserts that \a is INVALID ECMA-262.
+//     dlclark/regexp2 (the engine WithRegexpEngine wires, and v6's own opt-in)
+//     accepts \a, so it cannot pass this file — v6 skips it for the same reason,
+//     despite shipping the regexp2 opt-in. The engine still closes real ECMA-262
+//     *pattern* constructs (\c, lookahead, …) that Go RE2 rejects, which is what
+//     it is for; this one assertion-of-invalidity is beyond it.
+//   - idn-email / idn-hostname: need IDNA/Unicode machinery beyond the built-in
+//     validators.
 var formatSkip = map[string]struct{}{
 	"ecmascript-regex.json": {},
 	"idn-email.json":        {},
@@ -126,7 +133,7 @@ func TestSuiteCompliance(t *testing.T) {
 			}
 			opts := []Option{WithLoader(suiteRemotes(suiteRemotesDir))}
 			if assertFormat {
-				opts = append(opts, WithFormatAssertion())
+				opts = append(opts, WithFormatAssertion(), WithRegexpEngine(dlclarkCompile))
 			}
 			sch, err := Compile(schemaDoc, opts...)
 			if err != nil {
@@ -220,4 +227,27 @@ func (rl suiteRemotes) Load(url string) (any, error) {
 		return nil, err
 	}
 	return decodeSuiteJSON(raw)
+}
+
+// dlclarkRegexp adapts a dlclark/regexp2 regexp to our Regexp interface. Like
+// v6, regexp2 stays a test-only dependency (the library ships the Go RE2 default
+// and exposes WithRegexpEngine so a caller supplies ECMA-262 themselves).
+type dlclarkRegexp regexp2.Regexp
+
+func (re *dlclarkRegexp) MatchString(s string) bool {
+	matched, err := (*regexp2.Regexp)(re).MatchString(s)
+	return err == nil && matched
+}
+
+func (re *dlclarkRegexp) String() string { return (*regexp2.Regexp)(re).String() }
+
+// dlclarkCompile is a RegexpEngine over dlclark/regexp2 with the ECMAScript
+// flag, giving the ECMA-262 semantics the optional/format ecmascript-regex cases
+// (and pattern/patternProperties) require. Mirrors v6's example engine.
+func dlclarkCompile(pattern string) (Regexp, error) {
+	re, err := regexp2.Compile(pattern, regexp2.ECMAScript)
+	if err != nil {
+		return nil, err
+	}
+	return (*dlclarkRegexp)(re), nil
 }
