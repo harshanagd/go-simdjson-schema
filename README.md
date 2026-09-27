@@ -102,63 +102,68 @@ directly or via `benchstat`.
 
 ### Results
 
-Measured on the passing subset (Go 1.26, `-benchmem`, `ns/op` and `allocs/op`;
-lower is better). Across every keyword ours is faster and allocates less —
-typically **~1.5–3× faster** on subschema-recursing keywords and **~4–15×
+Measured on the passing subset (Go 1.26, Apple M3 Pro, `-benchmem`, `ns/op` and
+`allocs/op`; lower is better). Across every keyword ours is faster and allocates
+less — typically **~1.5–3× faster** on subschema-recursing keywords and **~4–12×
 faster with zero allocations** on the leaf assertions v6 still allocates an
 error/annotation scaffold for.
 
 | Keyword | ours ns | v6 ns | ours allocs | v6 allocs |
 |---|---:|---:|---:|---:|
-| boolean_schema | 9.7 | 105.4 | 0 | 5 |
-| content | 10.3 | 99.3 | 0 | 3 |
-| format | 12.4 | 87.7 | 0 | 3 |
-| pattern | 29.7 | 141.1 | 0 | 3 |
-| maxItems | 36.6 | 132.3 | 0 | 5 |
-| maxLength | 37.3 | 136.0 | 0 | 5 |
-| minItems | 38.4 | 132.9 | 0 | 5 |
-| minLength | 50.2 | 135.5 | 0 | 6 |
-| minProperties | 51.5 | 133.4 | 0 | 4 |
-| maxProperties | 56.6 | 152.7 | 0 | 5 |
-| type | 58.0 | 195.0 | 2 | 7 |
-| not | 67.9 | 235.9 | 1 | 8 |
-| required | 81.5 | 229.3 | 1 | 6 |
-| dependentRequired | 113.7 | 219.2 | 1 | 5 |
-| prefixItems | 123.3 | 228.5 | 2 | 7 |
-| uniqueItems | 135.5 | 268.6 | 3 | 6 |
-| ref | 139.1 | 223.7 | 2 | 7 |
-| enum | 150.5 | 281.7 | 5 | 9 |
-| const | 151.7 | 289.1 | 5 | 10 |
-| propertyNames | 177.6 | 270.5 | 3 | 8 |
-| exclusiveMinimum | 195.3 | 351.7 | 8 | 14 |
-| exclusiveMaximum | 196.4 | 325.4 | 8 | 14 |
-| anyOf | 195.4 | 394.2 | 5 | 12 |
-| minimum | 199.6 | 308.4 | 7 | 12 |
-| default | 213.9 | 303.2 | 5 | 8 |
-| if-then-else | 248.2 | 461.5 | 8 | 14 |
-| dependentSchemas | 257.5 | 381.8 | 5 | 10 |
-| maximum | 259.1 | 342.5 | 8 | 13 |
-| properties | 268.5 | 340.8 | 5 | 9 |
-| additionalProperties | 291.3 | 347.3 | 4 | 7 |
-| oneOf | 332.6 | 546.0 | 6 | 14 |
-| allOf | 340.5 | 704.4 | 10 | 25 |
-| items | 348.5 | 499.8 | 8 | 13 |
-| patternProperties | 368.7 | 530.2 | 5 | 12 |
-| multipleOf | 374.7 | 550.1 | 13 | 19 |
-| minContains | 581.6 | 848.0 | 21 | 27 |
-| maxContains | 564.6 | 885.8 | 23 | 28 |
-| contains | 619.0 | 1111.0 | 23 | 38 |
+| boolean_schema | 13.5 | 167.5 | 0 | 6 |
+| content | 13.7 | 165.9 | 0 | 4 |
+| format | 14.5 | 126.3 | 0 | 4 |
+| pattern | 31.7 | 167.3 | 0 | 5 |
+| minItems | 40.0 | 151.4 | 0 | 6 |
+| maxLength | 42.7 | 184.5 | 0 | 6 |
+| maxItems | 43.8 | 168.1 | 0 | 6 |
+| minLength | 50.7 | 203.3 | 0 | 7 |
+| minProperties | 58.0 | 185.0 | 0 | 5 |
+| maxProperties | 59.3 | 202.0 | 0 | 5 |
+| type | 59.7 | 247.9 | 2 | 8 |
+| anchor | 72.4 | 411.4 | 1 | 14 |
+| required | 87.1 | 244.9 | 1 | 7 |
+| not | 98.2 | 356.4 | 1 | 12 |
+| dependentRequired | 122.7 | 260.5 | 1 | 6 |
+| prefixItems | 135.8 | 384.3 | 2 | 11 |
+| uniqueItems | 152.9 | 349.6 | 3 | 10 |
+| enum | 166.3 | 382.8 | 5 | 11 |
+| const | 171.7 | 513.9 | 5 | 13 |
+| propertyNames | 215.0 | 426.4 | 3 | 11 |
+| exclusiveMaximum | 222.6 | 486.6 | 8 | 15 |
+| default | 227.3 | 398.0 | 5 | 10 |
+| minimum | 233.9 | 472.3 | 7 | 14 |
+| if-then-else | 236.3 | 620.5 | 8 | 20 |
+| maximum | 241.7 | 434.6 | 8 | 15 |
+| exclusiveMinimum | 242.1 | 437.7 | 8 | 15 |
+| anyOf | 276.5 | 563.1 | 6 | 17 |
+| dependentSchemas | 279.3 | 473.6 | 5 | 13 |
+| additionalProperties | 296.2 | 439.6 | 4 | 12 |
+| properties | 319.8 | 553.4 | 5 | 13 |
+| oneOf | 359.0 | 767.0 | 6 | 21 |
+| allOf | 379.4 | 1043.0 | 10 | 32 |
+| patternProperties | 388.1 | 726.4 | 5 | 16 |
+| ref | 438.5 | 867.1 | 6 | 23 |
+| multipleOf | 446.1 | 676.4 | 13 | 20 |
+| items | 510.8 | 1029.0 | 9 | 31 |
+| infinite-loop-detection | 514.8 | 1382.0 | 7 | 42 |
+| minContains | 539.6 | 866.0 | 21 | 30 |
+| dynamicRef | 602.4 | 1114.0 | 10 | 29 |
+| unevaluatedItems | 605.5 | 1238.0 | 14 | 34 |
+| maxContains | 646.0 | 899.8 | 23 | 32 |
+| contains | 733.6 | 1396.0 | 23 | 44 |
+| unevaluatedProperties | 1032.0 | 2049.0 | 15 | 35 |
+| defs | 3364.0 | 6332.0 | 39 | 135 |
 
 Two tiers are visible. **Leaf assertions** (`boolean_schema`, `format`,
 `content`, `pattern`, the min/max bounds) settle a verdict from v6's compiled
 fields without touching a subschema, so ours does zero allocations where v6
-still stands up its per-call error/annotation scaffold — the 4–15× gap. The
-**subschema-recursing keywords** (`allOf`/`contains`/`items`/…) still allocate,
-but far less than v6, because our evaluator carries no validation-context,
-scope-chain, or structured-error-tree machinery on the hot path. As sections 7
-(`$ref` → scope) and 9 (`unevaluated*` → annotation tracker) land, the
-recursing tier will give some of this margin back; the leaf tier and the
-(not-yet-measured) tape parse-side win are the durable advantages.
+still stands up its per-call error/annotation scaffold — the 4–12× gap. The
+**subschema-recursing keywords** (`allOf`/`contains`/`items`/`unevaluated*`/
+`dynamicRef`/…) still allocate, but far less than v6, because our evaluator
+carries no validation-context, scope-chain, or structured-error-tree machinery
+on the hot path. The leaf tier and the (not-yet-measured) tape parse-side win
+are the durable advantages.
 
 ## Running the tests
 

@@ -130,7 +130,7 @@ func collectReachable(root *v6.Schema, da *dynAnchors) bool {
 	}
 	visitVal = func(fv reflect.Value, res *v6.Schema) {
 		switch fv.Kind() {
-		case reflect.Ptr:
+		case reflect.Pointer:
 			if fv.Type() == schPtrType && !fv.IsNil() {
 				visitSch(fv.Interface().(*v6.Schema), res)
 			}
