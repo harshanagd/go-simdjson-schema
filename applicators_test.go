@@ -40,15 +40,17 @@ func TestIfThenElse(t *testing.T) {
 // through EVERY applicator, not be silently treated as a non-match — otherwise
 // a dropped guard could flip a verdict. One case per helper.
 func TestApplicatorPropagatesUnsupported(t *testing.T) {
-	// unevaluatedProperties is still gated (section 9). Nesting it inside each
-	// applicator must surface as unsupported rather than a silent non-match.
-	ref := `"unevaluatedProperties":false`
+	// An anchored $dynamicRef is still gated (needs runtime-scope resolution).
+	// Nesting it inside each applicator must surface as unsupported rather than a
+	// silent non-match. defs supplies the $dynamicAnchor the ref names.
+	ref := `"$dynamicRef":"#x"`
+	defs := `"$defs":{"d":{"$dynamicAnchor":"x","type":"string"}}`
 	cases := map[string]string{
-		"anyOf": `{"anyOf":[{` + ref + `}]}`,
-		"allOf": `{"allOf":[{` + ref + `}]}`,
-		"oneOf": `{"oneOf":[{` + ref + `}]}`,
-		"not":   `{"not":{` + ref + `}}`,
-		"if":    `{"if":{` + ref + `},"then":{"type":"object"}}`,
+		"anyOf": `{"$id":"mem://a","anyOf":[{` + ref + `}],` + defs + `}`,
+		"allOf": `{"$id":"mem://b","allOf":[{` + ref + `}],` + defs + `}`,
+		"oneOf": `{"$id":"mem://c","oneOf":[{` + ref + `}],` + defs + `}`,
+		"not":   `{"$id":"mem://d","not":{` + ref + `},` + defs + `}`,
+		"if":    `{"$id":"mem://e","if":{` + ref + `},"then":{"type":"object"},` + defs + `}`,
 	}
 	for name, schema := range cases {
 		t.Run(name, func(t *testing.T) {

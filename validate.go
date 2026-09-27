@@ -24,15 +24,33 @@ func (s *Schema) Validate(instance any) error {
 	// recursion by pointer. On a ref-free schema no chunk is ever filled, so it
 	// costs one zero-valued struct on the frame and nothing else.
 	var path refStack
-	return validate(s.c, instance, &path)
+	return validate(s.c, instance, &path, nil)
 }
 
-func validate(c *v6.Schema, v any, path *refStack) error {
+// validate checks v against the compiled schema c. path guards $ref cycles;
+// parentES is the evaluated-set of the nearest ancestor unevaluated* owner at
+// this same instance node (nil if none), which this node contributes its
+// evaluations to.
+func validate(c *v6.Schema, v any, path *refStack, parentES evalSet) error {
 	// The gate is checked per schema, not just at the top level: an applicator
 	// subschema may itself use a keyword we do not implement, and that must
 	// surface as ErrNotImplemented rather than a silently-skipped assertion.
 	if kw := usesUnimplemented(c); kw != "" {
 		return fmt.Errorf("%w: %s", ErrNotImplemented, kw)
+	}
+
+	// Section 9: a node that owns an unevaluated* keyword tracks its OWN subtree's
+	// evaluations in a fresh set (even when an ancestor set was passed down —
+	// unevaluated* scope is per schema subtree), applies unevaluated* to that
+	// set in phase 2, then merges its evaluations up into the parent set so an
+	// outer unevaluated* also sees them. A non-owner uses the parent set directly.
+	es := parentES
+	owns := false
+	if needsEvalSet(c) {
+		if own := newEvalSet(v, c); own != nil {
+			es = own
+			owns = true
+		}
 	}
 
 	// Section 7: references. v6 resolves $ref/$recursiveRef at compile time into
@@ -42,17 +60,17 @@ func validate(c *v6.Schema, v any, path *refStack) error {
 	// (an Anchor whose resolution differs by runtime scope) is gated in
 	// usesUnimplemented and never reaches here.
 	if c.Ref != nil {
-		if err := followRef(c.Ref, v, path); err != nil {
+		if err := followRef(c.Ref, v, path, es); err != nil {
 			return err
 		}
 	}
 	if c.RecursiveRef != nil {
-		if err := followRef(c.RecursiveRef, v, path); err != nil {
+		if err := followRef(c.RecursiveRef, v, path, es); err != nil {
 			return err
 		}
 	}
 	if c.DynamicRef != nil && c.DynamicRef.Ref != nil {
-		if err := followRef(c.DynamicRef.Ref, v, path); err != nil {
+		if err := followRef(c.DynamicRef.Ref, v, path, es); err != nil {
 			return err
 		}
 	}
@@ -84,11 +102,11 @@ func validate(c *v6.Schema, v any, path *refStack) error {
 			return err
 		}
 	case []any:
-		if err := validateArray(c, tv, path); err != nil {
+		if err := validateArray(c, tv, path, es); err != nil {
 			return err
 		}
 	case map[string]any:
-		if err := validateObject(c, tv, path); err != nil {
+		if err := validateObject(c, tv, path, es); err != nil {
 			return err
 		}
 	default:
@@ -100,7 +118,20 @@ func validate(c *v6.Schema, v any, path *refStack) error {
 	}
 
 	// Section 6: applicators (not / allOf / anyOf / oneOf / if-then-else).
-	return validateApplicators(c, v, path)
+	if err := validateApplicators(c, v, path, es); err != nil {
+		return err
+	}
+
+	// Section 9 phase 2: this node owns an unevaluated* keyword, and every other
+	// keyword has now marked es. Apply unevaluated* to the members left unmarked,
+	// then merge this subtree's evaluations up so an outer owner sees them too.
+	if owns {
+		if err := validateUnevaluated(c, v, path, es); err != nil {
+			return err
+		}
+		mergeScratch(parentES, es)
+	}
+	return nil
 }
 
 // typesMatch reports whether the instance satisfies the schema's `type` set.
@@ -154,7 +185,7 @@ func validateString(c *v6.Schema, str string) error {
 	return nil
 }
 
-func validateArray(c *v6.Schema, arr []any, path *refStack) error {
+func validateArray(c *v6.Schema, arr []any, path *refStack, es evalSet) error {
 	if c.MinItems != nil && len(arr) < *c.MinItems {
 		return &ValidationError{Msg: fmt.Sprintf("array length %d < minItems %d", len(arr), *c.MinItems)}
 	}
@@ -166,10 +197,10 @@ func validateArray(c *v6.Schema, arr []any, path *refStack) error {
 	}
 	// Array applicator subschemas (items / prefixItems / additionalItems /
 	// contains / minContains / maxContains).
-	return validateArrayApplicators(c, arr, path)
+	return validateArrayApplicators(c, arr, path, es)
 }
 
-func validateObject(c *v6.Schema, obj map[string]any, path *refStack) error {
+func validateObject(c *v6.Schema, obj map[string]any, path *refStack, es evalSet) error {
 	if c.MinProperties != nil && len(obj) < *c.MinProperties {
 		return &ValidationError{Msg: fmt.Sprintf("object has %d properties < minProperties %d", len(obj), *c.MinProperties)}
 	}
@@ -194,7 +225,45 @@ func validateObject(c *v6.Schema, obj map[string]any, path *refStack) error {
 	}
 	// Object applicator subschemas (properties / patternProperties /
 	// additionalProperties / propertyNames / dependentSchemas / dependencies).
-	return validateObjectApplicators(c, obj, path)
+	return validateObjectApplicators(c, obj, path, es)
+}
+
+// validateUnevaluated is section-9 phase 2: after every other keyword has marked
+// es, apply UnevaluatedProperties to each object property not marked, and
+// UnevaluatedItems to each array index not marked. Subschema recursion descends
+// into a child value, so it passes nil es (the child owns its own set).
+func validateUnevaluated(c *v6.Schema, v any, path *refStack, es evalSet) error {
+	switch tv := v.(type) {
+	case map[string]any:
+		if c.UnevaluatedProperties == nil {
+			return nil
+		}
+		for pname, pvalue := range tv {
+			if es.propEvaluated(pname) {
+				continue
+			}
+			if err := validate(c.UnevaluatedProperties, pvalue, path, nil); err != nil {
+				return wrapOrPropagate(err, fmt.Sprintf("unevaluatedProperties for %q", pname))
+			}
+			// unevaluatedProperties applied to this property, so it is now
+			// evaluated — record it so an outer unevaluated* sees it too.
+			es.markProp(pname)
+		}
+	case []any:
+		if c.UnevaluatedItems == nil {
+			return nil
+		}
+		for i, item := range tv {
+			if es.itemEvaluated(i) {
+				continue
+			}
+			if err := validate(c.UnevaluatedItems, item, path, nil); err != nil {
+				return wrapOrPropagate(err, fmt.Sprintf("unevaluatedItems[%d]", i))
+			}
+			es.markItem(i)
+		}
+	}
+	return nil
 }
 
 func validateNumber(c *v6.Schema, v any) error {

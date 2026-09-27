@@ -93,12 +93,6 @@ func usesUnimplemented(s *v6.Schema) string {
 		return "$recursiveRef"
 	case s.DynamicRef != nil && s.DynamicRef.Anchor != "":
 		return "$dynamicRef"
-	// Section 9: unevaluated. These consume the annotation set produced by the
-	// object/array applicators; still gated until the tracker is built.
-	case s.UnevaluatedProperties != nil:
-		return "unevaluatedProperties"
-	case s.UnevaluatedItems != nil:
-		return "unevaluatedItems"
 	// Extensions carry custom vocabularies we do not yet run.
 	case len(s.Extensions) > 0:
 		return "extension vocabulary"

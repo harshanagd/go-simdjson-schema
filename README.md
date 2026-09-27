@@ -22,15 +22,16 @@ hard bar.
 
 | Metric | Cases |
 |---|---:|
-| ✅ pass | 990 |
+| ✅ pass | 1177 |
 | ❌ fail | 0 |
-| ⏳ unsupported | 265 |
+| ⏳ unsupported | 78 |
 | **total** | **1255** |
 
 Implemented (green): the type-agnostic assertions (`type`, `const`, `enum`), the
 object / array / string / number keyword families, the in-place applicators, the
-object / array applicator subschemas (`properties`, `items`, `contains`, …), and
-the references (`$ref`, `$recursiveRef`, single-context `$dynamicRef`).
+object / array applicator subschemas (`properties`, `items`, `contains`, …), the
+references (`$ref`, `$recursiveRef`, single-context `$dynamicRef`), and the
+unevaluated applicators (`unevaluatedProperties`, `unevaluatedItems`).
 
 | Section | Keywords | Status |
 |---|---|---|
@@ -43,7 +44,7 @@ the references (`$ref`, `$recursiveRef`, single-context `$dynamicRef`).
 | Object/array applicators | `properties`, `patternProperties`, `additionalProperties`, `propertyNames`, `dependentSchemas`, `items`, `prefixItems`, `contains`, `minContains`, `maxContains` | ✅ implemented |
 | References | `$ref`, `$recursiveRef`, single-context `$dynamicRef` | ✅ implemented |
 | References (dynamic) | multi-context `$dynamicRef`/`$recursiveRef` (runtime-scope resolution) | ⏳ `ErrNotImplemented` |
-| Unevaluated | `unevaluatedProperties`, `unevaluatedItems` | ⏳ `ErrNotImplemented` |
+| Unevaluated | `unevaluatedProperties`, `unevaluatedItems` | ✅ implemented |
 | `format` / `content*` | asserting `format`, content vocabulary | ⏳ gated (`ErrNotImplemented`) |
 
 ## Why

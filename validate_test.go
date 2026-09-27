@@ -53,14 +53,15 @@ func TestConstNumberEquality(t *testing.T) {
 }
 
 func TestUnknownKeywordIsUnsupported(t *testing.T) {
-	// unevaluatedProperties is still gated (section 9, needs the annotation tracker).
-	s := compileJSON(t, `{"unevaluatedProperties":false}`)
-	inst, err := decodeSuiteJSON(json.RawMessage(`{"a":"x"}`))
+	// An anchored $dynamicRef needs runtime-scope resolution we do not implement,
+	// so it stays gated (section 7 dynamic remainder).
+	s := compileJSON(t, `{"$id":"mem://u","type":"array","items":{"$dynamicRef":"#x"},"$defs":{"d":{"$dynamicAnchor":"x","type":"string"}}}`)
+	inst, err := decodeSuiteJSON(json.RawMessage(`["y"]`))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := s.Validate(inst); !errors.Is(err, ErrNotImplemented) {
-		t.Fatal("want ErrNotImplemented for unevaluatedProperties, got nil (silent pass)")
+		t.Fatal("want ErrNotImplemented for anchored $dynamicRef, got nil (silent pass)")
 	}
 }
 

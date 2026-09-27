@@ -54,9 +54,9 @@ func TestPrefixItemsAndItems(t *testing.T) {
 
 // A gated keyword nested inside an object applicator must propagate.
 func TestObjectApplicatorPropagatesUnsupported(t *testing.T) {
-	// unevaluatedProperties is still gated (section 9); nesting it inside a
-	// property subschema must surface as unsupported, not a silent pass.
-	s := compileJSON(t, `{"properties":{"a":{"unevaluatedProperties":false}}}`)
+	// An anchored $dynamicRef is still gated; nesting it inside a property
+	// subschema must surface as unsupported, not a silent pass.
+	s := compileJSON(t, `{"$id":"mem://o","properties":{"a":{"$dynamicRef":"#x"}},"$defs":{"d":{"$dynamicAnchor":"x","type":"string"}}}`)
 	inst, err := decodeSuiteJSON(json.RawMessage(`{"a":{}}`))
 	if err != nil {
 		t.Fatal(err)
@@ -69,9 +69,9 @@ func TestObjectApplicatorPropagatesUnsupported(t *testing.T) {
 // A definite failure in a conjunction must win over a gated sibling regardless
 // of map-iteration order — the verdict must be a deterministic INVALID, never a
 // run-dependent "unsupported". Property "a" definitely fails its type; sibling
-// "b" carries a gated unevaluatedProperties. Run enough times to shuffle map order.
+// "b" carries a gated anchored $dynamicRef. Run enough times to shuffle map order.
 func TestConjunctionPrefersDefiniteFailure(t *testing.T) {
-	s := compileJSON(t, `{"properties":{"a":{"type":"integer"},"b":{"unevaluatedProperties":false}}}`)
+	s := compileJSON(t, `{"$id":"mem://cj","properties":{"a":{"type":"integer"},"b":{"$dynamicRef":"#x"}},"$defs":{"d":{"$dynamicAnchor":"x","type":"string"}}}`)
 	inst, err := decodeSuiteJSON(json.RawMessage(`{"a":"not-an-int","b":{}}`))
 	if err != nil {
 		t.Fatal(err)
