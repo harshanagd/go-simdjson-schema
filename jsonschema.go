@@ -40,10 +40,73 @@ type Schema struct {
 // caller compiling a bare document has none, so we supply a stable placeholder.
 const compileURL = "mem://schema"
 
+// URLLoader loads a JSON Schema document from an absolute URL, for resolving a
+// $ref to a resource not supplied in-memory. It mirrors v6's URLLoader: the
+// caller controls all fetching (there is no built-in network loader), so remote
+// resolution is opt-in and side-effect-free by default.
+type URLLoader interface {
+	// Load returns the decoded JSON document (map[string]any, bool, or a
+	// json.Number-using decode) for the given absolute url.
+	Load(url string) (any, error)
+}
+
+// Option configures a Compile call. Options mirror v6's compiler-configuration
+// surface for reference resolution.
+type Option func(*options)
+
+type resource struct {
+	url string
+	doc any
+}
+
+type options struct {
+	resources []resource // eager pre-seeded docs, in call order
+	loader    URLLoader  // lazy resolver for cache misses
+}
+
+// WithResource pre-registers a schema document under an absolute url, so a $ref
+// to that url resolves against the supplied doc without any load. Mirrors v6's
+// Compiler.AddResource. Use it when the referenced documents are known and
+// finite (e.g. a fixed set of remotes). Multiple WithResource options may be
+// passed; registering the same url twice is an error at compile time.
+func WithResource(url string, doc any) Option {
+	return func(o *options) {
+		o.resources = append(o.resources, resource{url, doc})
+	}
+}
+
+// WithLoader sets a URLLoader consulted when a $ref names a url that was not
+// pre-registered with WithResource and is not already cached. Mirrors v6's
+// Compiler.UseLoader. Resolution order per url is: any WithResource doc (v6's
+// document cache), then v6's embedded metaschemas, then this loader. Loaded docs
+// are cached and their own refs resolved transitively.
+func WithLoader(loader URLLoader) Option {
+	return func(o *options) { o.loader = loader }
+}
+
 // Compile turns a decoded JSON Schema document (map[string]any, bool, or the
 // output of encoding/json with UseNumber) into a *Schema, using v6's compiler.
-func Compile(doc any) (*Schema, error) {
+// Reference resolution to other documents is configured with WithResource
+// (eager) and WithLoader (lazy); with neither, only the in-memory doc and v6's
+// embedded metaschemas are resolvable.
+func Compile(doc any, opts ...Option) (*Schema, error) {
+	var o options
+	for _, opt := range opts {
+		opt(&o)
+	}
+
 	c := v6.NewCompiler()
+	if o.loader != nil {
+		c.UseLoader(v6Loader{o.loader})
+	}
+	for _, r := range o.resources {
+		if r.url == compileURL {
+			return nil, fmt.Errorf("jsonschema: WithResource url %q is reserved for the compiled document", compileURL)
+		}
+		if err := c.AddResource(r.url, r.doc); err != nil {
+			return nil, fmt.Errorf("jsonschema: add resource %q: %w", r.url, err)
+		}
+	}
 	if err := c.AddResource(compileURL, doc); err != nil {
 		return nil, fmt.Errorf("jsonschema: add resource: %w", err)
 	}
@@ -53,6 +116,12 @@ func Compile(doc any) (*Schema, error) {
 	}
 	return &Schema{c: sch}, nil
 }
+
+// v6Loader adapts our public URLLoader to v6's identical interface, keeping v6
+// out of our public signature (the drop-in surface is ours, not a re-export).
+type v6Loader struct{ l URLLoader }
+
+func (a v6Loader) Load(url string) (any, error) { return a.l.Load(url) }
 
 // usesUnimplemented reports the first schema feature outside sections 1-5 that
 // the compiled schema relies on, or "" if the schema is fully within the

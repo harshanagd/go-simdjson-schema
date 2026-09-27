@@ -22,16 +22,17 @@ hard bar.
 
 | Metric | Cases |
 |---|---:|
-| ✅ pass | 1177 |
+| ✅ pass | 1216 |
 | ❌ fail | 0 |
-| ⏳ unsupported | 78 |
+| ⏳ unsupported | 39 |
 | **total** | **1255** |
 
 Implemented (green): the type-agnostic assertions (`type`, `const`, `enum`), the
 object / array / string / number keyword families, the in-place applicators, the
 object / array applicator subschemas (`properties`, `items`, `contains`, …), the
-references (`$ref`, `$recursiveRef`, single-context `$dynamicRef`), and the
-unevaluated applicators (`unevaluatedProperties`, `unevaluatedItems`).
+references (`$ref`, `$recursiveRef`, single-context `$dynamicRef`, and remote
+`$ref` via a caller-supplied resource/loader), and the unevaluated applicators
+(`unevaluatedProperties`, `unevaluatedItems`).
 
 | Section | Keywords | Status |
 |---|---|---|
@@ -43,6 +44,7 @@ unevaluated applicators (`unevaluatedProperties`, `unevaluatedItems`).
 | Applicators | `allOf`, `anyOf`, `oneOf`, `not`, `if`/`then`/`else` | ✅ implemented |
 | Object/array applicators | `properties`, `patternProperties`, `additionalProperties`, `propertyNames`, `dependentSchemas`, `items`, `prefixItems`, `contains`, `minContains`, `maxContains` | ✅ implemented |
 | References | `$ref`, `$recursiveRef`, single-context `$dynamicRef` | ✅ implemented |
+| References (remote) | remote `$ref` via `Compile` + `WithResource`/`WithLoader` | ✅ implemented |
 | References (dynamic) | multi-context `$dynamicRef`/`$recursiveRef` (runtime-scope resolution) | ⏳ `ErrNotImplemented` |
 | Unevaluated | `unevaluatedProperties`, `unevaluatedItems` | ✅ implemented |
 | `format` / `content*` | asserting `format`, content vocabulary | ⏳ gated (`ErrNotImplemented`) |

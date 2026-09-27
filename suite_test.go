@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 )
 
@@ -24,6 +26,11 @@ var (
 )
 
 const suiteRoot = "testdata/JSON-Schema-Test-Suite/tests"
+
+// suiteRemotesDir holds the suite's remote schema fixtures. Every $ref to a
+// remote in the suite uses the http://localhost:1234/ prefix, which suiteRemotes
+// maps onto this directory.
+const suiteRemotesDir = "testdata/JSON-Schema-Test-Suite/remotes"
 
 // suiteCase is one {schema, data, valid} triple.
 type suiteCase struct {
@@ -88,7 +95,7 @@ func TestSuiteCompliance(t *testing.T) {
 			if err != nil {
 				t.Fatalf("%s / %q: schema decode: %v", name, g.Description, err)
 			}
-			sch, err := Compile(schemaDoc)
+			sch, err := Compile(schemaDoc, WithLoader(suiteRemotes(suiteRemotesDir)))
 			if err != nil {
 				// A compile failure counts as unsupported for now.
 				fs.unsupported += len(g.Tests)
@@ -155,4 +162,22 @@ func TestSuiteCompliance(t *testing.T) {
 		// but as a soft signal — the run stays green so CI tracks progress.
 		t.Logf("note: %d cases produced a WRONG verdict (not ErrNotImplemented) — investigate", total.fail)
 	}
+}
+
+// suiteRemotes resolves the suite's remote $ref fixtures. Every remote in the
+// suite is addressed as http://localhost:1234/<path>; this loader maps that
+// prefix onto the on-disk remotes directory it wraps. It implements URLLoader,
+// so the harness exercises the real WithLoader public API rather than a shortcut.
+type suiteRemotes string
+
+func (rl suiteRemotes) Load(url string) (any, error) {
+	rem, ok := strings.CutPrefix(url, "http://localhost:1234/")
+	if !ok {
+		return nil, fmt.Errorf("suiteRemotes: unexpected remote url %q", url)
+	}
+	raw, err := os.ReadFile(filepath.Join(string(rl), filepath.FromSlash(rem)))
+	if err != nil {
+		return nil, err
+	}
+	return decodeSuiteJSON(raw)
 }
