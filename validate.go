@@ -137,7 +137,9 @@ func validateArray(c *v6.Schema, arr []any) error {
 	if c.UniqueItems && hasDuplicate(arr) {
 		return &ValidationError{Msg: "array items are not unique"}
 	}
-	return nil
+	// Array applicator subschemas (items / prefixItems / additionalItems /
+	// contains / minContains / maxContains).
+	return validateArrayApplicators(c, arr)
 }
 
 func validateObject(c *v6.Schema, obj map[string]any) error {
@@ -163,7 +165,9 @@ func validateObject(c *v6.Schema, obj map[string]any) error {
 			}
 		}
 	}
-	return nil
+	// Object applicator subschemas (properties / patternProperties /
+	// additionalProperties / propertyNames / dependentSchemas / dependencies).
+	return validateObjectApplicators(c, obj)
 }
 
 func validateNumber(c *v6.Schema, v any) error {

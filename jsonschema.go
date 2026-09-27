@@ -81,32 +81,8 @@ func usesUnimplemented(s *v6.Schema) string {
 		return "$recursiveRef"
 	case s.DynamicRef != nil:
 		return "$dynamicRef"
-	// Section 2/3: object/array applicator subschemas. These interact with the
-	// annotation tracker (section 9) and are a later slice; still gated. The
-	// pure applicators (not/allOf/anyOf/oneOf/if) are implemented — not here.
-	case s.PropertyNames != nil:
-		return "propertyNames"
-	case len(s.Properties) > 0:
-		return "properties"
-	case len(s.PatternProperties) > 0:
-		return "patternProperties"
-	case s.AdditionalProperties != nil:
-		return "additionalProperties"
-	case len(s.Dependencies) > 0:
-		return "dependencies"
-	case len(s.DependentSchemas) > 0:
-		return "dependentSchemas"
-	case s.Contains != nil:
-		return "contains"
-	case s.Items != nil:
-		return "items"
-	case s.AdditionalItems != nil:
-		return "additionalItems"
-	case len(s.PrefixItems) > 0:
-		return "prefixItems"
-	case s.Items2020 != nil:
-		return "items"
-	// Section 9: unevaluated.
+	// Section 9: unevaluated. These consume the annotation set produced by the
+	// object/array applicators; still gated until the tracker is built.
 	case s.UnevaluatedProperties != nil:
 		return "unevaluatedProperties"
 	case s.UnevaluatedItems != nil:

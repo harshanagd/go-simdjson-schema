@@ -53,14 +53,14 @@ func TestConstNumberEquality(t *testing.T) {
 }
 
 func TestUnknownKeywordIsUnsupported(t *testing.T) {
-	// properties is still gated (object applicator subschemas are a later slice).
-	s := compileJSON(t, `{"properties":{"a":{"type":"string"}}}`)
+	// unevaluatedProperties is still gated (section 9, needs the annotation tracker).
+	s := compileJSON(t, `{"unevaluatedProperties":false}`)
 	inst, err := decodeSuiteJSON(json.RawMessage(`{"a":"x"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := s.Validate(inst); !errors.Is(err, ErrNotImplemented) {
-		t.Fatal("want ErrNotImplemented for properties, got nil (silent pass)")
+		t.Fatal("want ErrNotImplemented for unevaluatedProperties, got nil (silent pass)")
 	}
 }
 
