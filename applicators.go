@@ -16,7 +16,7 @@ import (
 // branch that uses an unimplemented keyword (a content or custom-vocabulary
 // keyword) must surface as unsupported, not be silently treated as a non-match
 // (which could flip the verdict).
-func validateApplicators(c *v6.Schema, v any, path *refStack, es evalSet, dr dref) error {
+func validateApplicators(c *v6.Schema, v Instance, path *refStack, es evalSet, dr dref) error {
 	if c.Not != nil {
 		if err := validateNot(c.Not, v, path, dr); err != nil {
 			return err
@@ -52,7 +52,7 @@ func validateApplicators(c *v6.Schema, v any, path *refStack, es evalSet, dr dre
 
 // validateNot passes nil es: a `not` that passes means its subschema did NOT
 // match, so nothing it touched counts as evaluated for the parent.
-func validateNot(sub *v6.Schema, v any, path *refStack, dr dref) error {
+func validateNot(sub *v6.Schema, v Instance, path *refStack, dr dref) error {
 	err := validate(sub, v, path, nil, dr)
 	if errors.Is(err, ErrNotImplemented) {
 		return err
@@ -66,7 +66,7 @@ func validateNot(sub *v6.Schema, v any, path *refStack, dr dref) error {
 // validateAllOf passes es directly: every branch must pass, so every branch's
 // evaluations count (a failure fails the whole node anyway, discarding nothing
 // meaningful).
-func validateAllOf(subs []*v6.Schema, v any, path *refStack, es evalSet, dr dref) error {
+func validateAllOf(subs []*v6.Schema, v Instance, path *refStack, es evalSet, dr dref) error {
 	for i, sub := range subs {
 		if err := validate(sub, v, path, es, dr); err != nil {
 			if errors.Is(err, ErrNotImplemented) {
@@ -81,7 +81,7 @@ func validateAllOf(subs []*v6.Schema, v any, path *refStack, es evalSet, dr dref
 // validateAnyOf merges every matching branch's evaluations (branch validates
 // into a scratch set, merged only on success so a failed branch contributes
 // nothing).
-func validateAnyOf(subs []*v6.Schema, v any, path *refStack, es evalSet, dr dref) error {
+func validateAnyOf(subs []*v6.Schema, v Instance, path *refStack, es evalSet, dr dref) error {
 	matched := false
 	for _, sub := range subs {
 		scratch := scratchFrom(es)
@@ -101,7 +101,7 @@ func validateAnyOf(subs []*v6.Schema, v any, path *refStack, es evalSet, dr dref
 }
 
 // validateOneOf merges the single matching branch's evaluations.
-func validateOneOf(subs []*v6.Schema, v any, path *refStack, es evalSet, dr dref) error {
+func validateOneOf(subs []*v6.Schema, v Instance, path *refStack, es evalSet, dr dref) error {
 	matched := 0
 	var winner evalSet
 	for _, sub := range subs {
@@ -123,7 +123,7 @@ func validateOneOf(subs []*v6.Schema, v any, path *refStack, es evalSet, dr dref
 }
 
 // validateIfThenElse merges the `if` branch (when it matches) and the taken arm.
-func validateIfThenElse(c *v6.Schema, v any, path *refStack, es evalSet, dr dref) error {
+func validateIfThenElse(c *v6.Schema, v Instance, path *refStack, es evalSet, dr dref) error {
 	ifScratch := scratchFrom(es)
 	ifErr := validate(c.If, v, path, ifScratch, dr)
 	if errors.Is(ifErr, ErrNotImplemented) {

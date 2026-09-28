@@ -98,6 +98,22 @@ func TestBooleanIsNotANumber(t *testing.T) {
 	validates(t, `{"type":"number"}`, `false`, false)
 }
 
+// An off-contract Go type (int64 — not one of json.Number/float64/int) is
+// KindUnknown: it satisfies no `type` and triggers no numeric assertion, exactly
+// as the pre-seam code left an unrecognised value untouched. Guards the Kind()
+// default arm against collapsing unknowns into KindNumber.
+func TestUnknownGoTypeIsNotANumber(t *testing.T) {
+	s := compileJSON(t, `{"type":"number","minimum":0}`)
+	if s.Validate(int64(5)) == nil {
+		t.Fatal("int64 must not satisfy type:number")
+	}
+	// A schema with only a numeric bound must not error on the unknown value.
+	s2 := compileJSON(t, `{"minimum":0}`)
+	if err := s2.Validate(int64(5)); err != nil {
+		t.Fatalf("unknown type under a bound must not error, got %v", err)
+	}
+}
+
 func TestUniqueItemsValueEquality(t *testing.T) {
 	validates(t, `{"uniqueItems":true}`, `[1,1.0]`, false) // 1 and 1.0 are equal by value
 }

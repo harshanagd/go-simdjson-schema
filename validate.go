@@ -24,7 +24,7 @@ func (s *Schema) Validate(instance any) error {
 	// recursion by pointer. On a ref-free schema no chunk is ever filled, so it
 	// costs one zero-valued struct on the frame and nothing else.
 	var path refStack
-	return validate(s.c, instance, &path, nil, dref{da: s.da})
+	return validate(s.c, wrap(instance), &path, nil, dref{da: s.da})
 }
 
 // validate checks v against the compiled schema c. path guards $ref cycles;
@@ -33,7 +33,7 @@ func (s *Schema) Validate(instance any) error {
 // evaluations to. dr carries the dynamic-ref resolution state (section 7b): its
 // scope is extended with c's resource on entry, so anchored $dynamicRef/
 // $recursiveRef resolve against the runtime scope rather than the lexical target.
-func validate(c *v6.Schema, v any, path *refStack, parentES evalSet, dr dref) error {
+func validate(c *v6.Schema, v Instance, path *refStack, parentES evalSet, dr dref) error {
 	// The gate is checked per schema, not just at the top level: an applicator
 	// subschema may itself use a keyword we do not implement, and that must
 	// surface as ErrNotImplemented rather than a silently-skipped assertion.
@@ -55,7 +55,7 @@ func validate(c *v6.Schema, v any, path *refStack, parentES evalSet, dr dref) er
 	es := parentES
 	owns := false
 	if needsEvalSet(c) {
-		if own := newEvalSet(v, c); own != nil {
+		if own := newEvalSet(v.Interface(), c); own != nil {
 			es = own
 			owns = true
 		}
@@ -108,19 +108,20 @@ func validate(c *v6.Schema, v any, path *refStack, parentES evalSet, dr dref) er
 	if c.Types != nil && !typesMatch(c.Types, v) {
 		return &ValidationError{Msg: "value is not of the required type(s)"}
 	}
-	if c.Const != nil && !equals(v, *c.Const) {
+	if c.Const != nil && !v.Equal(*c.Const) {
 		return &ValidationError{Msg: "value does not equal const"}
 	}
-	if c.Enum != nil && !containsEqual(c.Enum.Values, v) {
+	if c.Enum != nil && !instanceInEnum(v, c.Enum.Values) {
 		return &ValidationError{Msg: "value not in enum"}
 	}
 
 	// Sections 2-5 are type-scoped: each family only applies to its type. These
 	// do NOT return early — applicators (section 6) run regardless of type and
 	// in addition to the type-scoped keywords.
-	switch tv := v.(type) {
-	case string:
-		if err := validateString(c, tv); err != nil {
+	switch v.Kind() {
+	case KindString:
+		str := string(v.StringBytes())
+		if err := validateString(c, str); err != nil {
 			return err
 		}
 		// Section: format assertion. v6 populates c.Format only when it has
@@ -129,23 +130,21 @@ func validate(c *v6.Schema, v any, path *refStack, parentES evalSet, dr dref) er
 		// is a format violation. Scoped to strings; format never applies to other
 		// types.
 		if c.Format != nil {
-			if err := c.Format.Validate(tv); err != nil {
+			if err := c.Format.Validate(str); err != nil {
 				return &ValidationError{Msg: "value does not match format " + c.Format.Name}
 			}
 		}
-	case []any:
-		if err := validateArray(c, tv, path, es, dr); err != nil {
+	case KindArray:
+		if err := validateArray(c, v.Interface().([]any), path, es, dr); err != nil {
 			return err
 		}
-	case map[string]any:
-		if err := validateObject(c, tv, path, es, dr); err != nil {
+	case KindObject:
+		if err := validateObject(c, v.Interface().(map[string]any), path, es, dr); err != nil {
 			return err
 		}
-	default:
-		if isNumber(v) {
-			if err := validateNumber(c, v); err != nil {
-				return err
-			}
+	case KindNumber:
+		if err := validateNumber(c, v); err != nil {
+			return err
 		}
 	}
 
@@ -166,9 +165,20 @@ func validate(c *v6.Schema, v any, path *refStack, parentES evalSet, dr dref) er
 	return nil
 }
 
+// instanceInEnum reports whether v equals any value in the enum set. The set
+// holds decoded schema-side values; v compares itself against each via Equal.
+func instanceInEnum(v Instance, set []any) bool {
+	for _, e := range set {
+		if v.Equal(e) {
+			return true
+		}
+	}
+	return false
+}
+
 // typesMatch reports whether the instance satisfies the schema's `type` set.
 // v6 exposes the set only as strings (ToStrings), so we match on those.
-func typesMatch(t *v6.Types, v any) bool {
+func typesMatch(t *v6.Types, v Instance) bool {
 	for _, name := range t.ToStrings() {
 		if matchesType(name, v) {
 			return true
@@ -177,26 +187,23 @@ func typesMatch(t *v6.Types, v any) bool {
 	return false
 }
 
-func matchesType(name string, v any) bool {
+func matchesType(name string, v Instance) bool {
 	switch name {
 	case "null":
-		return v == nil
+		return v.Kind() == KindNull
 	case "boolean":
-		_, ok := v.(bool)
-		return ok
+		return v.Kind() == KindBool
 	case "string":
-		_, ok := v.(string)
-		return ok
+		return v.Kind() == KindString
 	case "array":
-		_, ok := v.([]any)
-		return ok
+		return v.Kind() == KindArray
 	case "object":
-		_, ok := v.(map[string]any)
-		return ok
+		return v.Kind() == KindObject
 	case "number":
-		return isNumber(v)
+		return v.Kind() == KindNumber
 	case "integer":
-		return isNumber(v) && isIntegral(v)
+		n, ok := v.Number()
+		return ok && n.IsIntegral()
 	}
 	return false
 }
@@ -264,8 +271,8 @@ func validateObject(c *v6.Schema, obj map[string]any, path *refStack, es evalSet
 // es, apply UnevaluatedProperties to each object property not marked, and
 // UnevaluatedItems to each array index not marked. Subschema recursion descends
 // into a child value, so it passes nil es (the child owns its own set).
-func validateUnevaluated(c *v6.Schema, v any, path *refStack, es evalSet, dr dref) error {
-	switch tv := v.(type) {
+func validateUnevaluated(c *v6.Schema, v Instance, path *refStack, es evalSet, dr dref) error {
+	switch tv := v.Interface().(type) {
 	case map[string]any:
 		if c.UnevaluatedProperties == nil {
 			return nil
@@ -274,7 +281,7 @@ func validateUnevaluated(c *v6.Schema, v any, path *refStack, es evalSet, dr dre
 			if es.propEvaluated(pname) {
 				continue
 			}
-			if err := validate(c.UnevaluatedProperties, pvalue, path, nil, dr); err != nil {
+			if err := validate(c.UnevaluatedProperties, wrap(pvalue), path, nil, dr); err != nil {
 				return wrapOrPropagate(err, fmt.Sprintf("unevaluatedProperties for %q", pname))
 			}
 			// unevaluatedProperties applied to this property, so it is now
@@ -289,7 +296,7 @@ func validateUnevaluated(c *v6.Schema, v any, path *refStack, es evalSet, dr dre
 			if es.itemEvaluated(i) {
 				continue
 			}
-			if err := validate(c.UnevaluatedItems, item, path, nil, dr); err != nil {
+			if err := validate(c.UnevaluatedItems, wrap(item), path, nil, dr); err != nil {
 				return wrapOrPropagate(err, fmt.Sprintf("unevaluatedItems[%d]", i))
 			}
 			es.markItem(i)
@@ -298,12 +305,16 @@ func validateUnevaluated(c *v6.Schema, v any, path *refStack, es evalSet, dr dre
 	return nil
 }
 
-func validateNumber(c *v6.Schema, v any) error {
+func validateNumber(c *v6.Schema, v Instance) error {
 	if c.Minimum == nil && c.Maximum == nil && c.ExclusiveMinimum == nil &&
 		c.ExclusiveMaximum == nil && c.MultipleOf == nil {
 		return nil
 	}
-	r, ok := ratOf(v)
+	num, ok := v.Number()
+	if !ok {
+		return &ValidationError{Msg: "number is not finite"}
+	}
+	r, ok := num.Rat()
 	if !ok {
 		return &ValidationError{Msg: "number is not finite"}
 	}

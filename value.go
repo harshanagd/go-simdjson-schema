@@ -70,15 +70,6 @@ func equals(a, b any) bool {
 	return false
 }
 
-func containsEqual(set []any, v any) bool {
-	for _, e := range set {
-		if equals(e, v) {
-			return true
-		}
-	}
-	return false
-}
-
 // hasDuplicate reports whether any two array elements are equal (for
 // uniqueItems). O(n^2) structural comparison; a hashing fast path is a later
 // optimisation.

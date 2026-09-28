@@ -80,7 +80,7 @@ func validateObjectApplicators(c *v6.Schema, obj map[string]any, path *refStack,
 				}
 			}
 		case *v6.Schema:
-			if cj.add(wrapOrPropagate(validate(d, obj, path, es, dr), fmt.Sprintf("dependencies subschema for %q", pname))) {
+			if cj.add(wrapOrPropagate(validate(d, wrap(obj), path, es, dr), fmt.Sprintf("dependencies subschema for %q", pname))) {
 				return cj.result()
 			}
 		}
@@ -93,7 +93,7 @@ func validateObjectApplicators(c *v6.Schema, obj map[string]any, path *refStack,
 		if _, ok := obj[pname]; !ok {
 			continue
 		}
-		if cj.add(wrapOrPropagate(validate(sub, obj, path, es, dr), fmt.Sprintf("dependentSchemas for %q", pname))) {
+		if cj.add(wrapOrPropagate(validate(sub, wrap(obj), path, es, dr), fmt.Sprintf("dependentSchemas for %q", pname))) {
 			return cj.result()
 		}
 	}
@@ -103,7 +103,7 @@ func validateObjectApplicators(c *v6.Schema, obj map[string]any, path *refStack,
 
 		if sub, ok := c.Properties[pname]; ok {
 			evaluated = true
-			if cj.add(wrapOrPropagate(validate(sub, pvalue, path, nil, dr), fmt.Sprintf("property %q", pname))) {
+			if cj.add(wrapOrPropagate(validate(sub, wrap(pvalue), path, nil, dr), fmt.Sprintf("property %q", pname))) {
 				return cj.result()
 			}
 			markProp(es, pname)
@@ -112,7 +112,7 @@ func validateObjectApplicators(c *v6.Schema, obj map[string]any, path *refStack,
 		for regex, sub := range c.PatternProperties {
 			if regex.MatchString(pname) {
 				evaluated = true
-				if cj.add(wrapOrPropagate(validate(sub, pvalue, path, nil, dr), fmt.Sprintf("patternProperties match for %q", pname))) {
+				if cj.add(wrapOrPropagate(validate(sub, wrap(pvalue), path, nil, dr), fmt.Sprintf("patternProperties match for %q", pname))) {
 					return cj.result()
 				}
 				markProp(es, pname)
@@ -132,7 +132,7 @@ func validateObjectApplicators(c *v6.Schema, obj map[string]any, path *refStack,
 					markProp(es, pname)
 				}
 			case *v6.Schema:
-				if cj.add(wrapOrPropagate(validate(ap, pvalue, path, nil, dr), fmt.Sprintf("additionalProperties for %q", pname))) {
+				if cj.add(wrapOrPropagate(validate(ap, wrap(pvalue), path, nil, dr), fmt.Sprintf("additionalProperties for %q", pname))) {
 					return cj.result()
 				}
 				markProp(es, pname)
@@ -142,7 +142,7 @@ func validateObjectApplicators(c *v6.Schema, obj map[string]any, path *refStack,
 
 	if c.PropertyNames != nil {
 		for pname := range obj {
-			if cj.add(wrapOrPropagate(validate(c.PropertyNames, pname, path, nil, dr), fmt.Sprintf("propertyNames for %q", pname))) {
+			if cj.add(wrapOrPropagate(validate(c.PropertyNames, wrap(pname), path, nil, dr), fmt.Sprintf("propertyNames for %q", pname))) {
 				return cj.result()
 			}
 		}
@@ -163,14 +163,14 @@ func validateArrayApplicators(c *v6.Schema, arr []any, path *refStack, es evalSe
 		// Draft 2020 shape.
 		evaluated = min(len(c.PrefixItems), len(arr))
 		for i := 0; i < evaluated; i++ {
-			if cj.add(wrapOrPropagate(validate(c.PrefixItems[i], arr[i], path, nil, dr), fmt.Sprintf("prefixItems[%d]", i))) {
+			if cj.add(wrapOrPropagate(validate(c.PrefixItems[i], wrap(arr[i]), path, nil, dr), fmt.Sprintf("prefixItems[%d]", i))) {
 				return cj.result()
 			}
 			markItem(es, i)
 		}
 		if c.Items2020 != nil {
 			for i := evaluated; i < len(arr); i++ {
-				if cj.add(wrapOrPropagate(validate(c.Items2020, arr[i], path, nil, dr), fmt.Sprintf("items[%d]", i))) {
+				if cj.add(wrapOrPropagate(validate(c.Items2020, wrap(arr[i]), path, nil, dr), fmt.Sprintf("items[%d]", i))) {
 					return cj.result()
 				}
 				markItem(es, i)
@@ -181,7 +181,7 @@ func validateArrayApplicators(c *v6.Schema, arr []any, path *refStack, es evalSe
 		switch items := c.Items.(type) {
 		case *v6.Schema:
 			for i, item := range arr {
-				if cj.add(wrapOrPropagate(validate(items, item, path, nil, dr), fmt.Sprintf("items[%d]", i))) {
+				if cj.add(wrapOrPropagate(validate(items, wrap(item), path, nil, dr), fmt.Sprintf("items[%d]", i))) {
 					return cj.result()
 				}
 				markItem(es, i)
@@ -190,7 +190,7 @@ func validateArrayApplicators(c *v6.Schema, arr []any, path *refStack, es evalSe
 		case []*v6.Schema:
 			evaluated = min(len(arr), len(items))
 			for i := 0; i < evaluated; i++ {
-				if cj.add(wrapOrPropagate(validate(items[i], arr[i], path, nil, dr), fmt.Sprintf("items[%d]", i))) {
+				if cj.add(wrapOrPropagate(validate(items[i], wrap(arr[i]), path, nil, dr), fmt.Sprintf("items[%d]", i))) {
 					return cj.result()
 				}
 				markItem(es, i)
@@ -213,7 +213,7 @@ func validateArrayApplicators(c *v6.Schema, arr []any, path *refStack, es evalSe
 			}
 		case *v6.Schema:
 			for i := evaluated; i < len(arr); i++ {
-				if cj.add(wrapOrPropagate(validate(ai, arr[i], path, nil, dr), fmt.Sprintf("additionalItems[%d]", i))) {
+				if cj.add(wrapOrPropagate(validate(ai, wrap(arr[i]), path, nil, dr), fmt.Sprintf("additionalItems[%d]", i))) {
 					return cj.result()
 				}
 				markItem(es, i)
@@ -242,7 +242,7 @@ func validateArrayApplicators(c *v6.Schema, arr []any, path *refStack, es evalSe
 func validateContains(c *v6.Schema, arr []any, path *refStack, es evalSet, dr dref) error {
 	matched := 0
 	for i, item := range arr {
-		err := validate(c.Contains, item, path, nil, dr)
+		err := validate(c.Contains, wrap(item), path, nil, dr)
 		if errors.Is(err, ErrNotImplemented) {
 			return err
 		}
